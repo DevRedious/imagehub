@@ -60,13 +60,17 @@ jobs:
 
           Write-Host "--- vtracer (best effort) ---"
           try {
-            gh release download --repo visioncortex/vtracer --pattern "*win*" --output vtracer-archive --skip-existing
-            if (Test-Path vtracer-archive) {
-              Expand-Archive vtracer-archive -DestinationPath vtracer-tmp -ErrorAction SilentlyContinue
+            gh release download --repo visioncortex/vtracer --pattern "*x86_64*windows*" --dir vtracer-dl
+            $archive = Get-ChildItem vtracer-dl | Select-Object -First 1
+            if ($archive) {
+              New-Item -ItemType Directory -Force vtracer-tmp | Out-Null
+              if ($archive.Extension -eq ".zip") { Expand-Archive $archive.FullName -DestinationPath vtracer-tmp }
+              else { tar -xf $archive.FullName -C vtracer-tmp }
               $exe = Get-ChildItem -Recurse vtracer-tmp -Filter vtracer.exe | Select-Object -First 1
               if ($exe) { Copy-Item $exe.FullName src-tauri/binaries/ }
             }
           } catch { Write-Host "vtracer non bundlé : $_" }
+          $global:LASTEXITCODE = 0
 
           Get-ChildItem -Recurse src-tauri/binaries | Select-Object FullName
 
