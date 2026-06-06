@@ -1,0 +1,95 @@
+name: Build ImageHub
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Dépendances système (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # Moteurs embarqués dans l'installeur Windows (ffmpeg, Real-ESRGAN, vtracer).
+      # magick/inkscape/rembg ne sont pas bundlés : les actions correspondantes
+      # s'affichent « indispo » tant qu'ils ne sont pas installés sur la machine.
+      - name: Sidecars Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+
+          Write-Host "--- ffmpeg ---"
+          Invoke-WebRequest https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-tmp
+          Copy-Item ffmpeg-tmp/*/bin/ffmpeg.exe src-tauri/binaries/
+
+          Write-Host "--- Real-ESRGAN (binaire + modèles) ---"
+          Invoke-WebRequest https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-windows.zip -OutFile esrgan.zip
+          Expand-Archive esrgan.zip -DestinationPath esrgan-tmp
+          Copy-Item esrgan-tmp/realesrgan-ncnn-vulkan.exe src-tauri/binaries/
+          Copy-Item esrgan-tmp/*.dll src-tauri/binaries/ -ErrorAction SilentlyContinue
+          Copy-Item -Recurse esrgan-tmp/models src-tauri/binaries/models
+
+          Write-Host "--- vtracer (best effort) ---"
+          try {
+            gh release download --repo visioncortex/vtracer --pattern "*win*" --output vtracer-archive --skip-existing
+            if (Test-Path vtracer-archive) {
+              Expand-Archive vtracer-archive -DestinationPath vtracer-tmp -ErrorAction SilentlyContinue
+              $exe = Get-ChildItem -Recurse vtracer-tmp -Filter vtracer.exe | Select-Object -First 1
+              if ($exe) { Copy-Item $exe.FullName src-tauri/binaries/ }
+            }
+          } catch { Write-Host "vtracer non bundlé : $_" }
+
+          Get-ChildItem -Recurse src-tauri/binaries | Select-Object FullName
+
+      - run: npm ci
+
+      - name: Build Tauri
+        run: npm run tauri build
+
+      - name: Artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagehub-${{ runner.os }}
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Release GitHub (sur tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/nsis/*.exe

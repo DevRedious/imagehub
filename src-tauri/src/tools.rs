@@ -35,9 +35,11 @@ pub(crate) fn find_tool(name: &str) -> Option<PathBuf> {
     let file = format!("{name}{EXE_EXT}");
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let p = dir.join(&file);
-            if p.is_file() {
-                return Some(p);
+            // à côté de l'exe, ou dans binaries/ (ressources de l'installeur)
+            for cand in [dir.join(&file), dir.join("binaries").join(&file)] {
+                if cand.is_file() {
+                    return Some(cand);
+                }
             }
         }
     }
