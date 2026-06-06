@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0e0e12;
+  --color-panel: #17171d;
+  --color-card: #1e1e26;
+  --color-accent: #7c6cf0;
+  --color-accent-soft: #2a2647;
+}
+
+body {
+  @apply bg-surface text-zinc-200 select-none;
+  font-family: "Inter", "Noto Sans", sans-serif;
+}
