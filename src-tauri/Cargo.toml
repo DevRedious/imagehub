@@ -26,6 +26,7 @@ serde_json = "1"
 tauri-plugin-clipboard-manager = "2.3.2"
 notify = "8.2.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "ico", "bmp"] }
+tauri-plugin-notification = "2.3.3"
 
 # En dev, optimiser les dépendances (décodage d'images 10-50× plus rapide)
 # sans ralentir la recompilation de notre propre code.

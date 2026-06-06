@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { fileIcon, stackIcon } from "../lib/icons";
+import { basename } from "../lib/paths";
 import {
   AVIF_SAVINGS_RATIO,
   fmtBytes,
@@ -201,7 +202,7 @@ export function ProjectView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm">
-                          {img.path.split("/").pop()}
+                          {basename(img.path)}
                         </span>
                         {info && (
                           <span className="shrink-0 rounded-md bg-accent-soft px-1.5 py-0.5 text-[10px]">

@@ -1,3 +1,5 @@
+import type { ToolsStatus } from "../lib/actions";
+import { basename } from "../lib/paths";
 import type { ActionId } from "../types/job";
 import { ActionBar } from "./ActionBar";
 import { DropZone } from "./DropZone";
@@ -9,6 +11,7 @@ interface Props {
   onRemoveStaged: (path: string) => void;
   onRun: (action: ActionId) => void;
   onPreview: (path: string) => void;
+  tools: ToolsStatus | null;
 }
 
 export function StudioView({
@@ -17,6 +20,7 @@ export function StudioView({
   onRemoveStaged,
   onRun,
   onPreview,
+  tools,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -38,7 +42,7 @@ export function StudioView({
                 <Thumb path={p} size={64} />
               </button>
               <span className="w-full truncate text-center text-[11px] text-zinc-400">
-                {p.split("/").pop()}
+                {basename(p)}
               </span>
               <button
                 type="button"
@@ -52,7 +56,7 @@ export function StudioView({
         </div>
       )}
 
-      <ActionBar disabled={staged.length === 0} onRun={onRun} />
+      <ActionBar disabled={staged.length === 0} tools={tools} onRun={onRun} />
     </div>
   );
 }

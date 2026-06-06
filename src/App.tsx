@@ -13,12 +13,13 @@ import { ProjectView } from "./components/ProjectView";
 import { ScanModal } from "./components/ScanModal";
 import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
-import { ACTIONS, actionAccepts } from "./lib/actions";
+import { ACTIONS, actionAccepts, type ToolsStatus } from "./lib/actions";
 import {
   loadOutputPrefs,
   type OutputPrefs,
   saveOutputPrefs,
 } from "./lib/output";
+import { basename } from "./lib/paths";
 import {
   type HeavyImage,
   type ImageUsages,
@@ -73,6 +74,14 @@ export default function App() {
   const [watcherOk, setWatcherOk] = useState(true);
   // aperçu plein écran d'un original (lightbox), chargé à la demande
   const [preview, setPreview] = useState<string | null>(null);
+  // disponibilité des moteurs CLI (grise les actions dont l'outil manque)
+  const [tools, setTools] = useState<ToolsStatus | null>(null);
+
+  useEffect(() => {
+    invoke<ToolsStatus>("check_tools")
+      .then(setTools)
+      .catch(() => {});
+  }, []);
 
   const optimizeRef = useRef<OptimizeRun | null>(null);
   const projectRef = useRef<ProjectInfo | null>(null);
@@ -374,7 +383,7 @@ export default function App() {
     const newJobs: Job[] = eligible.map((path) => ({
       id: crypto.randomUUID(),
       path,
-      name: path.split("/").pop() ?? path,
+      name: basename(path),
       action,
       status: "pending",
       progress: 0,
@@ -387,7 +396,7 @@ export default function App() {
   /** analyse avec modale de scan « théâtrale » */
   function analyzeWithModal(root: string) {
     setScanModalKind(null);
-    setScanModalName(root.split("/").pop() ?? root);
+    setScanModalName(basename(root));
     analyze(root).catch(() => {
       setScanModalName(null);
       setSavedProjects(removeProject(root));
@@ -448,7 +457,7 @@ export default function App() {
     const newJobs: Job[] = paths.map((path) => ({
       id: crypto.randomUUID(),
       path,
-      name: path.split("/").pop() ?? path,
+      name: basename(path),
       action: "optimizeAvif",
       status: "pending",
       progress: 0,
@@ -511,6 +520,7 @@ export default function App() {
               }
               onRun={runAction}
               onPreview={setPreview}
+              tools={tools}
             />
           ) : (
             <ProjectView

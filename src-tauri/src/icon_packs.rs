@@ -7,7 +7,6 @@ use crate::actions::{emit, resolve_out_dir, run_tool};
 use crate::icon_prompts::prompt_for;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::AppHandle;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -86,10 +85,15 @@ fn png(src: &str, dest: &PathBuf, size: u32, inner: Option<u32>) -> Result<(), S
     )
 }
 
-pub(crate) fn notify(title: &str, body: &str) {
-    let _ = Command::new("notify-send")
-        .args(["-a", "ImageHub", "-i", "imagehub", title, body])
-        .spawn();
+/// Notification système, multi-plateforme (plugin Tauri).
+pub(crate) fn notify(app: &AppHandle, title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app
+        .notification()
+        .builder()
+        .title(title)
+        .body(body)
+        .show();
 }
 
 /// Dossier cible + liste de fichiers selon le pack et le projet connecté.
@@ -203,10 +207,11 @@ pub fn generate(
     let prompt = prompt_for(kind, &dir.to_string_lossy(), project, in_project);
     match app.clipboard().write_text(prompt) {
         Ok(()) => notify(
+            app,
             "Pack d'icônes généré ✅",
             "Le prompt d'intégration est dans le presse-papier — colle-le à ton agent IA.",
         ),
-        Err(_) => notify("Pack d'icônes généré", "Copie du prompt impossible."),
+        Err(_) => notify(app, "Pack d'icônes généré", "Copie du prompt impossible."),
     }
 
     Ok(dir.to_string_lossy().to_string())

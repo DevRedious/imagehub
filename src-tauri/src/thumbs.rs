@@ -20,7 +20,10 @@ fn ffmpeg_thumb(src: &Path, dest: &Path) -> bool {
         "scale='min({0},iw)':'min({0},ih)':force_original_aspect_ratio=decrease",
         THUMB_PX
     );
-    Command::new("ffmpeg")
+    let ffmpeg = crate::tools::find_tool("ffmpeg")
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "ffmpeg".into());
+    Command::new(&ffmpeg)
         .arg("-y")
         .arg("-i")
         .arg(src)

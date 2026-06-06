@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect } from "react";
+import { basename } from "../lib/paths";
 
 interface Props {
   path: string;
@@ -17,7 +18,7 @@ export function Lightbox({ path, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const name = path.split("/").pop() ?? path;
+  const name = basename(path);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: fond cliquable de lightbox

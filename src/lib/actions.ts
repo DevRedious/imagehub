@@ -1,5 +1,15 @@
 import type { ActionId } from "../types/job";
 
+/** Disponibilité des moteurs CLI sur la machine (commande check_tools). */
+export interface ToolsStatus {
+  magick: boolean;
+  inkscape: boolean;
+  ffmpeg: boolean;
+  realesrgan: boolean;
+  rembg: boolean;
+  vtracer: boolean;
+}
+
 export interface ActionDef {
   id: ActionId;
   label: string;
@@ -7,8 +17,8 @@ export interface ActionDef {
   hint: string;
   /** extensions acceptées (vide = toutes les images) */
   accepts: string[];
-  /** moteur déjà disponible sur la machine */
-  ready: boolean;
+  /** moteurs requis (clés de ToolsStatus) */
+  engines: (keyof ToolsStatus)[];
 }
 
 export const ACTIONS: ActionDef[] = [
@@ -18,7 +28,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "⬆",
     hint: "Real-ESRGAN (GPU)",
     accepts: ["png", "jpg", "jpeg", "webp", "avif"],
-    ready: true,
+    engines: ["realesrgan"],
   },
   {
     id: "removeBg",
@@ -26,7 +36,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "✂",
     hint: "rembg",
     accepts: ["png", "jpg", "jpeg", "webp"],
-    ready: true,
+    engines: ["rembg"],
   },
   {
     id: "toIco",
@@ -34,7 +44,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "🔷",
     hint: "ImageMagick",
     accepts: [],
-    ready: true,
+    engines: ["magick"],
   },
   {
     id: "webIcons",
@@ -42,7 +52,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "🌐",
     hint: "SVG → pack favicon/PWA complet + prompt IA dans le presse-papier",
     accepts: ["svg"],
-    ready: true,
+    engines: ["magick", "inkscape"],
   },
   {
     id: "appIcons",
@@ -50,7 +60,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "📱",
     hint: "SVG → pack iOS/Android/Expo complet + prompt IA dans le presse-papier",
     accepts: ["svg"],
-    ready: true,
+    engines: ["magick", "inkscape"],
   },
   {
     id: "desktopIcons",
@@ -58,7 +68,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "🖥",
     hint: "SVG → pack Tauri/Electron complet + prompt IA dans le presse-papier",
     accepts: ["svg"],
-    ready: true,
+    engines: ["magick", "inkscape"],
   },
   {
     id: "svgToPng",
@@ -66,7 +76,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "🖼",
     hint: "Inkscape",
     accepts: ["svg"],
-    ready: true,
+    engines: ["inkscape"],
   },
   {
     id: "pngToSvg",
@@ -74,7 +84,7 @@ export const ACTIONS: ActionDef[] = [
     icon: "✒",
     hint: "vtracer",
     accepts: ["png", "jpg", "jpeg"],
-    ready: true,
+    engines: ["vtracer"],
   },
   {
     id: "toAvif",
@@ -82,9 +92,19 @@ export const ACTIONS: ActionDef[] = [
     icon: "📦",
     hint: "ffmpeg",
     accepts: [],
-    ready: true,
+    engines: ["ffmpeg"],
   },
 ];
+
+/** Moteurs manquants pour une action (vide = action utilisable).
+ *  Tant que le statut n'est pas chargé (null), rien n'est bloqué. */
+export function missingEngines(
+  action: ActionDef,
+  tools: ToolsStatus | null,
+): string[] {
+  if (!tools) return [];
+  return action.engines.filter((e) => !tools[e]);
+}
 
 export function actionAccepts(action: ActionDef, path: string): boolean {
   if (action.accepts.length === 0) return true;

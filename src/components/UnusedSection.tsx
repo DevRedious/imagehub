@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { basename } from "../lib/paths";
 import { fmtBytes, type HeavyImage } from "../lib/project";
 import { Thumb } from "./Thumb";
 
@@ -52,9 +53,7 @@ export function UnusedSection({ items, rel, onDelete, onPreview }: Props) {
             >
               <Thumb path={img.path} fill />
             </button>
-            <p className="mt-1.5 truncate text-xs">
-              {img.path.split("/").pop()}
-            </p>
+            <p className="mt-1.5 truncate text-xs">{basename(img.path)}</p>
             <p className="text-[10px] text-zinc-500">{fmtBytes(img.bytes)}</p>
             <button
               type="button"

@@ -1,3 +1,4 @@
+import { basename } from "../lib/paths";
 import { fmtBytes, type HeavyImage } from "../lib/project";
 import { Modal } from "./Modal";
 
@@ -19,7 +20,7 @@ export function ConfirmFilesModal({ items, onCancel, onConfirm }: Props) {
       <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-zinc-400">
         {items.map((i) => (
           <li key={i.path} className="truncate font-mono">
-            {i.path.split("/").pop()} · {fmtBytes(i.bytes)}
+            {basename(i.path)} · {fmtBytes(i.bytes)}
           </li>
         ))}
       </ul>

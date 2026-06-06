@@ -1,5 +1,6 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { OUTPUT_MODES, type OutputPrefs } from "../lib/output";
+import { basename } from "../lib/paths";
 import { Select } from "./Select";
 
 interface Props {
@@ -35,7 +36,7 @@ export function OutputSelect({ prefs, onChange }: Props) {
           title={prefs.customDir ?? ""}
           className="max-w-48 truncate rounded-lg bg-panel px-2.5 py-1.5 text-zinc-400 transition-colors hover:bg-card hover:text-zinc-200 cursor-pointer"
         >
-          📁 {prefs.customDir?.split("/").pop() ?? "choisir…"}
+          📁 {prefs.customDir ? basename(prefs.customDir) : "choisir…"}
         </button>
       )}
     </div>

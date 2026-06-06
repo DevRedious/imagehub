@@ -12,6 +12,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 pub fn deliver_prompt(app: AppHandle, title: String, prompt: String) -> Result<(), String> {
     app.clipboard().write_text(prompt).map_err(|e| e.to_string())?;
     crate::icon_packs::notify(
+        &app,
         &title,
         "Le prompt est dans le presse-papier — colle-le à ton agent IA.",
     );
@@ -92,12 +93,12 @@ fn out_path(input: &str, mode: &str, custom_dir: &Option<String>, ext: &str, suf
     Ok(dest.to_string_lossy().to_string())
 }
 
-fn home_path(rel: &str) -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rel)
-}
-
 pub(crate) fn run_tool(program: &str, args: &[&str]) -> Result<(), String> {
-    let out = Command::new(program)
+    // résolution multi-OS : sidecar bundlé → ~/.local/bin → PATH
+    let resolved = crate::tools::find_tool(program)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| program.to_string());
+    let out = Command::new(&resolved)
         .args(args)
         .output()
         .map_err(|e| format!("{program} introuvable : {e}"))?;
@@ -133,10 +134,8 @@ fn to_avif(input: &str, dest: &str) -> Result<(), String> {
 /// car le device auto retombe sur llvmpipe, le rendu logiciel CPU).
 /// Le binaire ne lit que png/jpg/webp → pré-conversion ffmpeg sinon (ex. AVIF).
 fn upscale(input: &str, dest: &str) -> Result<(), String> {
-    let models = home_path(".local/share/realesrgan-models");
-    if !models.is_dir() {
-        return Err("Modèles Real-ESRGAN introuvables (~/.local/share/realesrgan-models)".into());
-    }
+    let models = crate::tools::realesrgan_models()
+        .ok_or("Modèles Real-ESRGAN introuvables (~/.local/share/realesrgan-models ou models/ à côté du binaire)")?;
     let ext = Path::new(input)
         .extension()
         .and_then(|e| e.to_str())
@@ -162,12 +161,10 @@ fn upscale(input: &str, dest: &str) -> Result<(), String> {
     result
 }
 
-/// Détourage (suppression du fond) via rembg dans son venv dédié.
+/// Détourage (suppression du fond) via rembg (venv dédié ou PATH).
 fn remove_bg(input: &str, dest: &str) -> Result<(), String> {
-    let rembg = home_path(".local/share/imagehub-venv/bin/rembg");
-    if !rembg.is_file() {
-        return Err("rembg non installé : venv ~/.local/share/imagehub-venv absent".into());
-    }
+    let rembg = crate::tools::rembg_path()
+        .ok_or("rembg non installé (venv ~/.local/share/imagehub-venv ou pip install rembg)")?;
     run_tool(&rembg.to_string_lossy(), &["i", input, dest])
 }
 
