@@ -95,6 +95,15 @@ jobs:
           releaseName: ImageHub ${{ github.ref_name }}
           releaseDraft: true
           includeUpdaterJson: true
+          # Sert à la fois de corps de la release et de notes affichées dans la
+          # fenêtre de mise à jour de l'app (champ `notes` de latest.json).
+          # Reste lisible en texte brut (la modale n'affiche pas le Markdown).
+          releaseBody: |
+            Mise à jour automatique : l'application télécharge et installe cette version, puis redémarre.
+
+            Linux : seul l'AppImage est mis à jour automatiquement (les paquets .deb / .rpm se mettent à jour manuellement).
+
+            Voir les fichiers ci-dessous pour une installation manuelle.
 
       # Récupère aussi les bundles classiques (.deb/.rpm) en artefacts de run,
       # utile pour les builds manuels (workflow_dispatch, sans release).
