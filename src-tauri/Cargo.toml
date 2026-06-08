@@ -1,9 +1,10 @@
 [package]
 name = "imagehub"
 version = "0.7.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Traitement & optimisation d'images en local + audit des assets de projets de dev"
+authors = ["REDIOUS"]
 edition = "2021"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -27,6 +28,8 @@ tauri-plugin-clipboard-manager = "2.3.2"
 notify = "8.2.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "ico", "bmp"] }
 tauri-plugin-notification = "2.3.3"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 # En dev, optimiser les dépendances (décodage d'images 10-50× plus rapide)
 # sans ralentir la recompilation de notre propre code.

@@ -27,7 +27,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm"],
+    "targets": ["deb", "rpm", "appimage"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,5 +36,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM1MTlGQkZDMUUxQTJCNTYKUldSV0t4b2UvUHNaTmRDZEF6OFFqSWZlZFhydjZxRUo0YUtGMUJvUmlOVWtJcUR1K2hQSzhtNC8K",
+      "endpoints": [
+        "https://github.com/DevRedious/imagehub/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

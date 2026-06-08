@@ -13,6 +13,7 @@ import { ProjectView } from "./components/ProjectView";
 import { ScanModal } from "./components/ScanModal";
 import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
+import { UpdateModal } from "./components/UpdateModal";
 import { ACTIONS, actionAccepts, type ToolsStatus } from "./lib/actions";
 import {
   loadOutputPrefs,
@@ -35,6 +36,7 @@ import {
   saveProject,
 } from "./lib/projectsStore";
 import { qualityScore } from "./lib/score";
+import { checkForUpdate, type Update } from "./lib/updater";
 import type { ActionId, Job, JobProgressEvent } from "./types/job";
 
 interface OptimizeRun {
@@ -76,11 +78,18 @@ export default function App() {
   const [preview, setPreview] = useState<string | null>(null);
   // disponibilité des moteurs CLI (grise les actions dont l'outil manque)
   const [tools, setTools] = useState<ToolsStatus | null>(null);
+  // mise à jour disponible (auto-updater Tauri), proposée au démarrage
+  const [update, setUpdate] = useState<Update | null>(null);
 
   useEffect(() => {
     invoke<ToolsStatus>("check_tools")
       .then(setTools)
       .catch(() => {});
+  }, []);
+
+  // vérifie en arrière-plan si une nouvelle version est publiée
+  useEffect(() => {
+    checkForUpdate().then(setUpdate);
   }, []);
 
   const optimizeRef = useRef<OptimizeRun | null>(null);
@@ -565,6 +574,10 @@ export default function App() {
       </main>
 
       {preview && <Lightbox path={preview} onClose={() => setPreview(null)} />}
+
+      {update && (
+        <UpdateModal update={update} onDismiss={() => setUpdate(null)} />
+      )}
 
       {scanModalName && (
         <ScanModal
