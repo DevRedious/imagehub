@@ -79,6 +79,11 @@ jobs:
 
       - run: npm ci
 
+      # Extrait la section du tag depuis CHANGELOG.md → corps de release + notes updater.
+      - name: Notes de version
+        id: notes
+        run: node scripts/extract-changelog.mjs "${{ github.ref_name }}"
+
       # Build + signature des artefacts updater + (sur tag) release GitHub.
       # tauri-action agrège latest.json sur la release depuis les deux runners
       # de la matrice (Linux AppImage + Windows NSIS), avec leurs signatures.
@@ -95,15 +100,10 @@ jobs:
           releaseName: ImageHub ${{ github.ref_name }}
           releaseDraft: true
           includeUpdaterJson: true
-          # Sert à la fois de corps de la release et de notes affichées dans la
-          # fenêtre de mise à jour de l'app (champ `notes` de latest.json).
-          # Reste lisible en texte brut (la modale n'affiche pas le Markdown).
-          releaseBody: |
-            Mise à jour automatique : l'application télécharge et installe cette version, puis redémarre.
-
-            Linux : seul l'AppImage est mis à jour automatiquement (les paquets .deb / .rpm se mettent à jour manuellement).
-
-            Voir les fichiers ci-dessous pour une installation manuelle.
+          # Section CHANGELOG du tag (extraite ci-dessus) : sert de corps de la
+          # release ET de notes affichées dans la fenêtre de mise à jour de l'app
+          # (champ `notes` de latest.json).
+          releaseBody: ${{ steps.notes.outputs.notes }}
 
       # Récupère aussi les bundles classiques (.deb/.rpm) en artefacts de run,
       # utile pour les builds manuels (workflow_dispatch, sans release).
