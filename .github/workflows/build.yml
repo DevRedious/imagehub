@@ -11,6 +11,9 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # Séquentiel : évite que les deux runners créent/mettent à jour la
+      # release et latest.json en même temps (collision observée en parallèle).
+      max-parallel: 1
       matrix:
         platform: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.platform }}
