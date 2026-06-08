@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # historique + tags complets pour générer les notes
 
       - uses: actions/setup-node@v4
         with:
@@ -79,10 +81,10 @@ jobs:
 
       - run: npm ci
 
-      # Extrait la section du tag depuis CHANGELOG.md → corps de release + notes updater.
+      # Génère les notes depuis les commits du tag → corps de release + notes updater.
       - name: Notes de version
         id: notes
-        run: node scripts/extract-changelog.mjs "${{ github.ref_name }}"
+        run: node scripts/release-notes.mjs "${{ github.ref_name }}"
 
       # Build + signature des artefacts updater + (sur tag) release GitHub.
       # tauri-action agrège latest.json sur la release depuis les deux runners
@@ -100,8 +102,8 @@ jobs:
           releaseName: ImageHub ${{ github.ref_name }}
           releaseDraft: true
           includeUpdaterJson: true
-          # Section CHANGELOG du tag (extraite ci-dessus) : sert de corps de la
-          # release ET de notes affichées dans la fenêtre de mise à jour de l'app
+          # Notes générées depuis les commits (étape ci-dessus) : corps de la
+          # release ET notes affichées dans la fenêtre de mise à jour de l'app
           # (champ `notes` de latest.json).
           releaseBody: ${{ steps.notes.outputs.notes }}
 
