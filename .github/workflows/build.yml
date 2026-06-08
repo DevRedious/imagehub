@@ -74,6 +74,8 @@ jobs:
 
           Get-ChildItem -Recurse src-tauri/binaries | Select-Object FullName
 
+      - run: npm ci
+
       # Build + signature des artefacts updater + (sur tag) release GitHub.
       # tauri-action agrège latest.json sur la release depuis les deux runners
       # de la matrice (Linux AppImage + Windows NSIS), avec leurs signatures.
