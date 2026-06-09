@@ -70,7 +70,7 @@ Emplacements spécifiques recherchés : venv `~/.local/share/imagehub-venv/bin/r
 
 ### Studio — actions sur fichiers (10 au total)
 
-Glisser-déposer ou sélection de fichiers, puis lancement d'une action. Le mode de sortie est configurable (à côté de l'original, sous-dossier par format, ou dossier personnalisé) et les collisions de noms sont évitées par suffixe `-1`, `-2`, …
+Glisser-déposer ou sélection de fichiers, puis lancement d'une action. Les actions sont regroupées par catégorie (Détourage · Agrandissement · Conversion · Packs d'icônes) et **filtrées selon le type de fichier déposé** : une catégorie sans action applicable est masquée, une action incompatible est grisée avec sa raison, et tout fichier/format non pris en charge (ou action lancée sans fichier compatible) est signalé par un message éphémère. Le mode de sortie est configurable (à côté de l'original, sous-dossier par format, ou dossier personnalisé) et les collisions de noms sont évitées par suffixe `-1`, `-2`, …
 
 - **Upscale ×4** — Real-ESRGAN (png/jpg/webp/avif ; AVIF pré-converti via ffmpeg)
 - **Remove BG** — détourage via rembg (png/jpg/webp)

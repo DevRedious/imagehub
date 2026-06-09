@@ -14,11 +14,13 @@ import { ProjectView } from "./components/ProjectView";
 import { ScanModal } from "./components/ScanModal";
 import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
+import { type Toast, Toaster, type ToastKind } from "./components/Toaster";
 import { UpdatedModal } from "./components/UpdatedModal";
 import { UpdateModal } from "./components/UpdateModal";
 import {
   ACTIONS,
   actionAccepts,
+  BG_MODELS,
   type BgModel,
   type QualityPreset,
   qualityValue,
@@ -29,7 +31,7 @@ import {
   type OutputPrefs,
   saveOutputPrefs,
 } from "./lib/output";
-import { basename } from "./lib/paths";
+import { basename, isSupportedImage } from "./lib/paths";
 import {
   type HeavyImage,
   type ImageUsages,
@@ -112,6 +114,21 @@ export default function App() {
   const [update, setUpdate] = useState<Update | null>(null);
   // version fraîchement installée à confirmer après un redémarrage de MAJ
   const [updatedTo, setUpdatedTo] = useState<string | null>(null);
+  // messages éphémères (feedback non bloquant)
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const pushToast = useCallback((kind: ToastKind, message: string) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, kind, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4500);
+  }, []);
+
+  const dismissToast = useCallback(
+    (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id)),
+    [],
+  );
 
   useEffect(() => {
     invoke<ToolsStatus>("check_tools")
@@ -150,8 +167,12 @@ export default function App() {
   const optimizeRef = useRef<OptimizeRun | null>(null);
   const projectRef = useRef<ProjectInfo | null>(null);
   const usagesRef = useRef<Record<string, ImageUsages> | null>(null);
+  const jobsRef = useRef<Job[]>([]);
+  // n'avertir qu'une fois par session du téléchargement d'un modèle non standard
+  const modelNoticeRef = useRef(false);
   projectRef.current = project;
   usagesRef.current = usages;
+  jobsRef.current = jobs;
 
   // cache de session par projet : bascule instantanée entre projets connus
   // (la fraîcheur est assurée par une ré-analyse silencieuse à la bascule)
@@ -427,15 +448,35 @@ export default function App() {
             : j,
         );
       });
+      // notification proactive en cas d'échec (au-delà de la file de jobs)
+      if (payload.status === "error") {
+        const name =
+          jobsRef.current.find((j) => j.id === payload.job_id)?.name ??
+          "Traitement";
+        const msg = (payload.error ?? "échec").split("\n")[0].slice(0, 140);
+        pushToast("error", `${name} : ${msg}`);
+      }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [onOptimizeJobEnd]);
+  }, [onOptimizeJobEnd, pushToast]);
 
-  const addFiles = useCallback((paths: string[]) => {
-    setStaged((prev) => [...new Set([...prev, ...paths])]);
-  }, []);
+  const addFiles = useCallback(
+    (paths: string[]) => {
+      // écarte dossiers et fichiers non-image (silencieux jusqu'ici)
+      const ok = paths.filter(isSupportedImage);
+      const ignored = paths.length - ok.length;
+      if (ignored > 0) {
+        pushToast(
+          "info",
+          `${ignored} fichier(s) ignoré(s) (format non pris en charge)`,
+        );
+      }
+      if (ok.length > 0) setStaged((prev) => [...new Set([...prev, ...ok])]);
+    },
+    [pushToast],
+  );
 
   function launchJob(job: Job) {
     invoke("run_action", {
@@ -462,6 +503,35 @@ export default function App() {
     const def = ACTIONS.find((a) => a.id === action);
     if (!def) return;
     const eligible = staged.filter((p) => actionAccepts(def, p));
+    // plus de silence : aucun fichier compatible → on explique pourquoi
+    if (eligible.length === 0) {
+      const need = def.accepts.length ? def.accepts.join(", ") : "une image";
+      pushToast(
+        "error",
+        `Aucun fichier compatible avec « ${def.label} » — ${need} requis`,
+      );
+      return;
+    }
+    const ignored = staged.length - eligible.length;
+    if (ignored > 0) {
+      pushToast(
+        "info",
+        `${ignored} fichier(s) ignoré(s) — incompatibles avec « ${def.label} »`,
+      );
+    }
+    // rappel (une fois) du téléchargement d'un modèle de détourage non standard
+    if (
+      (action === "removeBg" || action === "bgToAvif") &&
+      bgModel !== "u2net" &&
+      !modelNoticeRef.current
+    ) {
+      modelNoticeRef.current = true;
+      const label = BG_MODELS.find((m) => m.id === bgModel)?.label ?? bgModel;
+      pushToast(
+        "info",
+        `Modèle « ${label} » : 1er usage = téléchargement, ça peut prendre un moment`,
+      );
+    }
     const newJobs: Job[] = eligible.map((path) => ({
       id: crypto.randomUUID(),
       path,
@@ -700,6 +770,8 @@ export default function App() {
           }}
         />
       )}
+
+      <Toaster toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

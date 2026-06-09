@@ -1,23 +1,11 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import { IMAGE_EXTS } from "../lib/paths";
 
 interface Props {
   onFiles: (paths: string[]) => void;
 }
-
-const IMAGE_EXTS = [
-  "png",
-  "jpg",
-  "jpeg",
-  "webp",
-  "avif",
-  "svg",
-  "bmp",
-  "gif",
-  "tiff",
-  "ico",
-];
 
 export function DropZone({ onFiles }: Props) {
   const [hovering, setHovering] = useState(false);
