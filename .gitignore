@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Vidéos sources des médias (les GIF dérivés sont versionnés)
+docs/media/*.mp4
