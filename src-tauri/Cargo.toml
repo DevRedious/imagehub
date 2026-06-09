@@ -1,6 +1,6 @@
 [package]
 name = "imagehub"
-version = "0.7.2"
+version = "0.7.3"
 description = "Traitement & optimisation d'images en local + audit des assets de projets de dev"
 authors = ["REDIOUS"]
 edition = "2021"
