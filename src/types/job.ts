@@ -8,7 +8,8 @@ export type ActionId =
   | "svgToPng"
   | "pngToSvg"
   | "toAvif"
-  | "optimizeAvif";
+  | "optimizeAvif"
+  | "bgToAvif";
 
 /** Actions dont la sortie est un dossier (pack) et l'entrée du SVG uniquement. */
 export const PACK_ACTIONS: ActionId[] = [

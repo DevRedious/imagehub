@@ -1,4 +1,10 @@
-import type { ToolsStatus } from "../lib/actions";
+import {
+  BG_MODELS,
+  type BgModel,
+  QUALITY_PRESETS,
+  type QualityPreset,
+  type ToolsStatus,
+} from "../lib/actions";
 import { basename } from "../lib/paths";
 import type { ActionId } from "../types/job";
 import { ActionBar } from "./ActionBar";
@@ -12,6 +18,12 @@ interface Props {
   onRun: (action: ActionId) => void;
   onPreview: (path: string) => void;
   tools: ToolsStatus | null;
+  quality: QualityPreset;
+  onQualityChange: (q: QualityPreset) => void;
+  aggressiveness: number;
+  onAggressivenessChange: (v: number) => void;
+  bgModel: BgModel;
+  onBgModelChange: (m: BgModel) => void;
 }
 
 export function StudioView({
@@ -21,6 +33,12 @@ export function StudioView({
   onRun,
   onPreview,
   tools,
+  quality,
+  onQualityChange,
+  aggressiveness,
+  onAggressivenessChange,
+  bgModel,
+  onBgModelChange,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -55,6 +73,67 @@ export function StudioView({
           ))}
         </div>
       )}
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Modèle détourage</span>
+        <div className="flex gap-1 rounded-lg bg-card p-0.5">
+          {BG_MODELS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onBgModelChange(m.id)}
+              title={m.note}
+              className={`rounded-md px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                bgModel === m.id
+                  ? "bg-accent-soft text-zinc-100"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="whitespace-nowrap text-xs text-zinc-500">
+          Agressivité détourage
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={5}
+          value={aggressiveness}
+          onChange={(e) => onAggressivenessChange(Number(e.target.value))}
+          title="Plus c'est bas, plus les petits détails sont conservés ; plus c'est haut, plus le détourage est franc."
+          className="h-1.5 w-44 cursor-pointer accent-accent"
+        />
+        <span className="w-9 text-right text-xs tabular-nums text-zinc-400">
+          {aggressiveness}%
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Qualité AVIF</span>
+        <div className="flex gap-1 rounded-lg bg-card p-0.5">
+          {QUALITY_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onQualityChange(p.id)}
+              title={`Qualité ${p.value}/100 (détourage + AVIF)`}
+              className={`rounded-md px-2.5 py-1 text-xs transition-colors cursor-pointer ${
+                quality === p.id
+                  ? "bg-accent-soft text-zinc-100"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <ActionBar disabled={staged.length === 0} tools={tools} onRun={onRun} />
     </div>

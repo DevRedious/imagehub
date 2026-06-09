@@ -8,7 +8,42 @@ export interface ToolsStatus {
   realesrgan: boolean;
   rembg: boolean;
   vtracer: boolean;
+  avifenc: boolean;
 }
+
+/** Presets de qualité AVIF (valeur 0..100 passée à avifenc). */
+export type QualityPreset = "high" | "balanced" | "light";
+
+export const QUALITY_PRESETS: {
+  id: QualityPreset;
+  label: string;
+  value: number;
+}[] = [
+  { id: "high", label: "Haute", value: 85 },
+  { id: "balanced", label: "Équilibrée", value: 70 },
+  { id: "light", label: "Léger", value: 55 },
+];
+
+export function qualityValue(preset: QualityPreset): number {
+  return QUALITY_PRESETS.find((p) => p.id === preset)?.value ?? 70;
+}
+
+/** Modèles de détourage rembg (du plus rapide au plus précis). */
+export type BgModel = "u2net" | "isnet-general-use" | "birefnet-general";
+
+export const BG_MODELS: { id: BgModel; label: string; note: string }[] = [
+  { id: "u2net", label: "Standard", note: "rapide, déjà installé" },
+  {
+    id: "isnet-general-use",
+    label: "Précis",
+    note: "meilleurs détails · ~178 Mo au 1er usage",
+  },
+  {
+    id: "birefnet-general",
+    label: "Haute précision",
+    note: "cheveux / détails fins · ~900 Mo au 1er usage",
+  },
+];
 
 export interface ActionDef {
   id: ActionId;
@@ -37,6 +72,14 @@ export const ACTIONS: ActionDef[] = [
     hint: "rembg",
     accepts: ["png", "jpg", "jpeg", "webp"],
     engines: ["rembg"],
+  },
+  {
+    id: "bgToAvif",
+    label: "Détourage + AVIF",
+    icon: "🪄",
+    hint: "rembg → AVIF transparent (avifenc) — qualité selon le preset",
+    accepts: ["png", "jpg", "jpeg", "webp"],
+    engines: ["rembg", "avifenc"],
   },
   {
     id: "toIco",

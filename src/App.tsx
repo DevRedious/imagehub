@@ -16,7 +16,14 @@ import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
 import { UpdatedModal } from "./components/UpdatedModal";
 import { UpdateModal } from "./components/UpdateModal";
-import { ACTIONS, actionAccepts, type ToolsStatus } from "./lib/actions";
+import {
+  ACTIONS,
+  actionAccepts,
+  type BgModel,
+  type QualityPreset,
+  qualityValue,
+  type ToolsStatus,
+} from "./lib/actions";
 import {
   loadOutputPrefs,
   type OutputPrefs,
@@ -52,11 +59,27 @@ interface OptimizeRun {
 }
 
 const SIDEBAR_KEY = "imagehub.sidebarCollapsed";
+const QUALITY_KEY = "imagehub.avifQuality";
+const AGGRO_KEY = "imagehub.bgAggressiveness";
+const BG_MODEL_KEY = "imagehub.bgModel";
 
 export default function App() {
   const [staged, setStaged] = useState<string[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [outputPrefs, setOutputPrefs] = useState<OutputPrefs>(loadOutputPrefs);
+  const [quality, setQuality] = useState<QualityPreset>(
+    () =>
+      (localStorage.getItem(QUALITY_KEY) as QualityPreset | null) ?? "balanced",
+  );
+  const [aggressiveness, setAggressiveness] = useState<number>(() => {
+    const raw = localStorage.getItem(AGGRO_KEY);
+    if (raw === null) return 50;
+    const v = Number(raw);
+    return Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 50;
+  });
+  const [bgModel, setBgModel] = useState<BgModel>(
+    () => (localStorage.getItem(BG_MODEL_KEY) as BgModel | null) ?? "u2net",
+  );
   const [view, setView] = useState<View>("studio");
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) === "1",
@@ -149,6 +172,21 @@ export default function App() {
   function updateOutputPrefs(prefs: OutputPrefs) {
     setOutputPrefs(prefs);
     saveOutputPrefs(prefs);
+  }
+
+  function updateQuality(q: QualityPreset) {
+    setQuality(q);
+    localStorage.setItem(QUALITY_KEY, q);
+  }
+
+  function updateAggressiveness(v: number) {
+    setAggressiveness(v);
+    localStorage.setItem(AGGRO_KEY, String(v));
+  }
+
+  function updateBgModel(m: BgModel) {
+    setBgModel(m);
+    localStorage.setItem(BG_MODEL_KEY, m);
   }
 
   function toggleSidebar() {
@@ -408,6 +446,9 @@ export default function App() {
       customDir: outputPrefs.customDir,
       projectKind: projectRef.current?.kind ?? null,
       projectRoot: projectRef.current?.root ?? null,
+      quality: qualityValue(quality),
+      aggressiveness,
+      model: bgModel,
     }).catch((e) => {
       setJobs((prev) =>
         prev.map((j) =>
@@ -562,6 +603,12 @@ export default function App() {
               onRun={runAction}
               onPreview={setPreview}
               tools={tools}
+              quality={quality}
+              onQualityChange={updateQuality}
+              aggressiveness={aggressiveness}
+              onAggressivenessChange={updateAggressiveness}
+              bgModel={bgModel}
+              onBgModelChange={updateBgModel}
             />
           ) : (
             <ProjectView

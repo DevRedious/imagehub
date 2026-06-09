@@ -161,16 +161,128 @@ fn upscale(input: &str, dest: &str) -> Result<(), String> {
     result
 }
 
-/// Détourage (suppression du fond) via rembg (venv dédié ou PATH).
-fn remove_bg(input: &str, dest: &str) -> Result<(), String> {
+/// Lance rembg en mode « masque seul » → PNG temporaire contenant le masque
+/// doux (niveaux de gris 0..255) du modèle. `tag` rend le nom unique par job.
+fn rembg_mask(input: &str, tag: &str, model: &str) -> Result<PathBuf, String> {
     let rembg = crate::tools::rembg_path()
         .ok_or("rembg non installé (venv ~/.local/share/imagehub-venv ou pip install rembg)")?;
-    run_tool(&rembg.to_string_lossy(), &["i", input, dest])
+    let tmp = std::env::temp_dir().join(format!("imagehub-mask-{tag}.png"));
+    // -m choisit le modèle (u2net rapide → birefnet précis) ; les modèles
+    // autres que u2net sont téléchargés par rembg au premier usage.
+    run_tool(
+        &rembg.to_string_lossy(),
+        &["i", "-m", model, "--only-mask", input, &tmp.to_string_lossy()],
+    )
+    .map_err(|e| format!("Détourage rembg échoué : {e}"))?;
+    Ok(tmp)
+}
+
+/// Recompose l'image d'origine en RGBA en remappant le masque doux selon
+/// l'agressivité (0..100). On garde les couleurs d'origine (pas de halo noir)
+/// et on déplace la fenêtre de seuil : plus l'agressivité est BASSE, plus on
+/// conserve les pixels de faible confiance (petits détails) ; plus elle est
+/// HAUTE, plus on n'garde que les zones franches.
+fn compose_cutout(original: &str, mask: &Path, aggressiveness: u8) -> Result<image::RgbaImage, String> {
+    let rgb = image::open(original)
+        .map_err(|e| format!("Image source illisible : {e}"))?
+        .to_rgb8();
+    let mask = image::open(mask)
+        .map_err(|e| format!("Masque illisible : {e}"))?
+        .to_luma8();
+    if rgb.dimensions() != mask.dimensions() {
+        return Err("Dimensions image/masque incohérentes (rembg).".into());
+    }
+    // fenêtre de seuil glissante [lo, lo+105] sur 0..255 (souplesse des bords
+    // préservée par la rampe linéaire de largeur 105).
+    let lo = f32::from(aggressiveness.min(100)) / 100.0 * 150.0;
+    let span = 105.0;
+    let (w, h) = rgb.dimensions();
+    let mut out = image::RgbaImage::new(w, h);
+    for y in 0..h {
+        for x in 0..w {
+            let c = rgb.get_pixel(x, y).0;
+            let m = f32::from(mask.get_pixel(x, y).0[0]);
+            let a = (((m - lo) / span).clamp(0.0, 1.0) * 255.0).round() as u8;
+            out.put_pixel(x, y, image::Rgba([c[0], c[1], c[2], a]));
+        }
+    }
+    Ok(out)
+}
+
+/// Détourage à agressivité + modèle réglables → écrit le PNG RGBA détouré.
+fn remove_bg(input: &str, dest: &str, aggressiveness: u8, model: &str) -> Result<(), String> {
+    let tag = Path::new(dest).file_stem().and_then(|s| s.to_str()).unwrap_or("cut");
+    let mask = rembg_mask(input, tag, model)?;
+    let composed = compose_cutout(input, &mask, aggressiveness);
+    let _ = std::fs::remove_file(&mask);
+    composed?
+        .save(dest)
+        .map_err(|e| format!("Écriture du PNG détouré impossible : {e}"))
 }
 
 /// Vectorisation PNG/JPG → SVG via vtracer.
 fn png_to_svg(input: &str, dest: &str) -> Result<(), String> {
     run_tool("vtracer", &["--input", input, "--output", dest])
+}
+
+/// Détourage (rembg) puis encodage AVIF en conservant la transparence.
+///
+/// IMPORTANT : on n'utilise PAS ffmpeg/libaom ici — sur certains builds il
+/// perd silencieusement le canal alpha (sortie opaque). avifenc (libavif-tools)
+/// gère l'alpha nativement via `--qcolor`/`--qalpha` (et surtout pas
+/// `--quality`/`--quality-alpha`, qui n'existent pas en avifenc 1.3).
+fn bg_to_avif(
+    input: &str,
+    dest: &str,
+    quality: u8,
+    aggressiveness: u8,
+    model: &str,
+) -> Result<(), String> {
+    let tag = Path::new(dest).file_stem().and_then(|n| n.to_str()).unwrap_or("cut");
+    // 1) détourage paramétrable → PNG RGBA temporaire
+    let mask = rembg_mask(input, tag, model)?;
+    let composed = compose_cutout(input, &mask, aggressiveness);
+    let _ = std::fs::remove_file(&mask);
+    let tmp = std::env::temp_dir().join(format!("imagehub-nobg-{tag}.png"));
+    composed?
+        .save(&tmp)
+        .map_err(|e| format!("Écriture du PNG détouré impossible : {e}"))?;
+    let tmp_s = tmp.to_string_lossy().to_string();
+    // 2) encodage AVIF avec alpha sur le PNG RGBA détouré
+    let q = quality.to_string();
+    let enc = run_tool("avifenc", &["--qcolor", &q, "--qalpha", &q, &tmp_s, dest]);
+    let _ = std::fs::remove_file(&tmp);
+    enc.map_err(|e| format!("Encodage AVIF échoué (avifenc) : {e}"))?;
+    // 3) non-régression : l'AVIF doit conserver un alpha non trivial
+    verify_avif_alpha(dest)
+}
+
+/// Garde-fou : l'AVIF produit doit avoir un alpha non trivial (au moins un
+/// pixel < 255), sinon le fond est resté opaque (régression à signaler).
+/// Décodage via avifdec (fourni avec avifenc) car le crate `image` ne décode
+/// pas l'AVIF dans cette config ; best-effort si avifdec est absent.
+fn verify_avif_alpha(avif: &str) -> Result<(), String> {
+    if crate::tools::find_tool("avifdec").is_none() {
+        return Ok(()); // pas de décodeur → on ne bloque pas la conversion
+    }
+    let tmp = std::env::temp_dir().join(format!(
+        "imagehub-verify-{}.png",
+        Path::new(avif).file_stem().and_then(|n| n.to_str()).unwrap_or("v"),
+    ));
+    let tmp_s = tmp.to_string_lossy().to_string();
+    run_tool("avifdec", &[avif, &tmp_s])
+        .map_err(|e| format!("Vérification de l'alpha impossible (avifdec) : {e}"))?;
+    let decoded = image::open(&tmp);
+    let _ = std::fs::remove_file(&tmp);
+    let opaque = decoded
+        .map_err(|e| format!("AVIF décodé illisible : {e}"))?
+        .to_rgba8()
+        .pixels()
+        .all(|p| p[3] == 255);
+    if opaque {
+        return Err("Fond non détouré : l'AVIF est entièrement opaque (alpha = 255).".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -183,6 +295,9 @@ pub async fn run_action(
     custom_dir: Option<String>,
     project_kind: Option<String>,
     project_root: Option<String>,
+    quality: Option<u8>,
+    aggressiveness: Option<u8>,
+    model: Option<String>,
 ) -> Result<(), String> {
     emit(&app, &job_id, "running", 15, None, None);
 
@@ -199,6 +314,7 @@ pub async fn run_action(
             "toIco" => ("ico", ""),
             "svgToPng" => ("png", ""),
             "toAvif" | "optimizeAvif" => ("avif", ""),
+            "bgToAvif" => ("avif", "-nobg"),
             "upscale" => ("png", "@4x"),
             "removeBg" => ("png", "-nobg"),
             "pngToSvg" => ("svg", ""),
@@ -207,12 +323,20 @@ pub async fn run_action(
         // optimisation en place : AVIF à côté, puis suppression de l'original
         let mode = if action == "optimizeAvif" { "same" } else { output_mode.as_str() };
         let dest = out_path(&path, mode, &custom_dir, ext, suffix)?;
+        let model = model.as_deref().unwrap_or("u2net");
         match action.as_str() {
             "toIco" => to_ico(&path, &dest)?,
             "svgToPng" => svg_to_png(&path, &dest)?,
             "toAvif" => to_avif(&path, &dest)?,
+            "bgToAvif" => bg_to_avif(
+                &path,
+                &dest,
+                quality.unwrap_or(70),
+                aggressiveness.unwrap_or(50),
+                model,
+            )?,
             "upscale" => upscale(&path, &dest)?,
-            "removeBg" => remove_bg(&path, &dest)?,
+            "removeBg" => remove_bg(&path, &dest, aggressiveness.unwrap_or(50), model)?,
             "pngToSvg" => png_to_svg(&path, &dest)?,
             "optimizeAvif" => {
                 to_avif(&path, &dest)?;

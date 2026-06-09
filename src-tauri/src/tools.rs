@@ -81,6 +81,7 @@ pub struct ToolsStatus {
     pub realesrgan: bool,
     pub rembg: bool,
     pub vtracer: bool,
+    pub avifenc: bool,
 }
 
 #[tauri::command]
@@ -92,5 +93,6 @@ pub fn check_tools() -> ToolsStatus {
         realesrgan: find_tool("realesrgan-ncnn-vulkan").is_some(),
         rembg: rembg_path().is_some(),
         vtracer: find_tool("vtracer").is_some(),
+        avifenc: find_tool("avifenc").is_some(),
     }
 }
