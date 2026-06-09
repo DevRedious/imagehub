@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -13,6 +14,7 @@ import { ProjectView } from "./components/ProjectView";
 import { ScanModal } from "./components/ScanModal";
 import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
+import { UpdatedModal } from "./components/UpdatedModal";
 import { UpdateModal } from "./components/UpdateModal";
 import { ACTIONS, actionAccepts, type ToolsStatus } from "./lib/actions";
 import {
@@ -36,7 +38,12 @@ import {
   saveProject,
 } from "./lib/projectsStore";
 import { qualityScore } from "./lib/score";
-import { checkForUpdate, type Update } from "./lib/updater";
+import {
+  checkForUpdate,
+  clearJustUpdated,
+  pendingUpdatedVersion,
+  type Update,
+} from "./lib/updater";
 import type { ActionId, Job, JobProgressEvent } from "./types/job";
 
 interface OptimizeRun {
@@ -80,6 +87,8 @@ export default function App() {
   const [tools, setTools] = useState<ToolsStatus | null>(null);
   // mise à jour disponible (auto-updater Tauri), proposée au démarrage
   const [update, setUpdate] = useState<Update | null>(null);
+  // version fraîchement installée à confirmer après un redémarrage de MAJ
+  const [updatedTo, setUpdatedTo] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<ToolsStatus>("check_tools")
@@ -89,7 +98,30 @@ export default function App() {
 
   // vérifie en arrière-plan si une nouvelle version est publiée
   useEffect(() => {
-    checkForUpdate().then(setUpdate);
+    checkForUpdate().then((r) => {
+      if (r.status === "available") setUpdate(r.update);
+    });
+  }, []);
+
+  // après un redémarrage de mise à jour : confirme une seule fois, si la
+  // version installée correspond bien (sinon le marqueur est nettoyé en silence).
+  useEffect(() => {
+    const pending = pendingUpdatedVersion();
+    if (!pending) return;
+    getVersion()
+      .then((v) => {
+        if (v === pending) setUpdatedTo(v);
+        else clearJustUpdated();
+      })
+      .catch(() => {});
+  }, []);
+
+  // vérification manuelle (page À propos) : ouvre la modale si une MAJ existe,
+  // et renvoie le résultat pour l'affichage d'état dans la page.
+  const checkUpdatesManually = useCallback(async () => {
+    const r = await checkForUpdate();
+    if (r.status === "available") setUpdate(r.update);
+    return r;
   }, []);
 
   const optimizeRef = useRef<OptimizeRun | null>(null);
@@ -517,7 +549,7 @@ export default function App() {
           </header>
 
           {view === "about" ? (
-            <AboutView />
+            <AboutView onCheckForUpdates={checkUpdatesManually} />
           ) : view === "project" && scanModalName ? (
             <ProjectSkeleton />
           ) : view === "studio" || !project ? (
@@ -577,6 +609,16 @@ export default function App() {
 
       {update && (
         <UpdateModal update={update} onDismiss={() => setUpdate(null)} />
+      )}
+
+      {updatedTo && (
+        <UpdatedModal
+          version={updatedTo}
+          onClose={() => {
+            clearJustUpdated();
+            setUpdatedTo(null);
+          }}
+        />
       )}
 
       {scanModalName && (

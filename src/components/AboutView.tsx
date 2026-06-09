@@ -1,12 +1,24 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
+import type { UpdateCheck } from "../lib/updater";
 
 interface Engine {
   name: string;
   role: string;
   url: string;
 }
+
+interface Props {
+  onCheckForUpdates: () => Promise<UpdateCheck>;
+}
+
+type CheckState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "upToDate" }
+  | { kind: "available"; version: string }
+  | { kind: "error" };
 
 const ENGINES: Engine[] = [
   {
@@ -41,15 +53,28 @@ const ENGINES: Engine[] = [
   },
 ];
 
-/** Page « à propos » : identité, version et crédits des moteurs. */
-export function AboutView() {
+/** Page « à propos » : identité, version, mises à jour et crédits des moteurs. */
+export function AboutView({ onCheckForUpdates }: Props) {
   const [version, setVersion] = useState("");
+  const [check, setCheck] = useState<CheckState>({ kind: "idle" });
 
   useEffect(() => {
     getVersion()
       .then(setVersion)
       .catch(() => {});
   }, []);
+
+  async function runCheck() {
+    setCheck({ kind: "checking" });
+    const r = await onCheckForUpdates();
+    if (r.status === "available") {
+      setCheck({ kind: "available", version: r.update.version });
+    } else if (r.status === "upToDate") {
+      setCheck({ kind: "upToDate" });
+    } else {
+      setCheck({ kind: "error" });
+    }
+  }
 
   return (
     <div className="flex flex-col items-center gap-8 py-10">
@@ -66,6 +91,32 @@ export function AboutView() {
           optimisation AVIF de projets, upscale, détourage et vectorisation — le
           tout sur ta machine, rien ne sort.
         </p>
+
+        <div className="flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={runCheck}
+            disabled={check.kind === "checking"}
+            className="rounded-lg bg-card px-4 py-2 text-xs text-zinc-200 transition-colors hover:bg-accent-soft cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {check.kind === "checking"
+              ? "Recherche…"
+              : "Rechercher des mises à jour"}
+          </button>
+          {check.kind === "upToDate" && (
+            <p className="text-xs text-emerald-400">✓ ImageHub est à jour</p>
+          )}
+          {check.kind === "available" && (
+            <p className="text-xs text-emerald-400">
+              Mise à jour disponible : v{check.version}
+            </p>
+          )}
+          {check.kind === "error" && (
+            <p className="text-xs text-zinc-500">
+              Vérification impossible (connexion ?)
+            </p>
+          )}
+        </div>
       </div>
 
       <section className="w-full max-w-3xl space-y-2">

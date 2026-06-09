@@ -1,6 +1,6 @@
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useState } from "react";
-import type { Update } from "../lib/updater";
+import { markJustUpdated, type Update } from "../lib/updater";
 import { Modal } from "./Modal";
 
 interface Props {
@@ -34,10 +34,14 @@ export function UpdateModal({ update, onDismiss }: Props) {
             setPct(total ? Math.round((got / total) * 100) : 0);
             break;
           case "Finished":
+            setPct(100);
             setPhase("installing");
             break;
         }
       });
+      // Mémorise la version avant de redémarrer : au prochain lancement, l'app
+      // affichera la confirmation « mis à jour vers vX » (une seule fois).
+      markJustUpdated(update.version);
       // Redémarre sur la nouvelle version.
       await relaunch();
     } catch (err) {
