@@ -4,6 +4,8 @@ import { Thumb } from "./Thumb";
 interface Props {
   jobs: Job[];
   onClear: () => void;
+  onReveal: (path: string) => void;
+  onPreview: (path: string) => void;
 }
 
 const STATUS_STYLE: Record<Job["status"], string> = {
@@ -20,7 +22,7 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   error: "erreur",
 };
 
-export function JobList({ jobs, onClear }: Props) {
+export function JobList({ jobs, onClear, onReveal, onPreview }: Props) {
   if (jobs.length === 0) return null;
 
   return (
@@ -38,46 +40,66 @@ export function JobList({ jobs, onClear }: Props) {
         </button>
       </div>
 
-      {jobs.map((job) => (
-        <div key={job.id} className="flex gap-3 rounded-xl bg-card p-3">
-          <Thumb
-            path={
-              job.status === "done" &&
-              job.output &&
-              !PACK_ACTIONS.includes(job.action)
-                ? job.output
-                : job.path
-            }
-            size={52}
-          />
+      {jobs.map((job) => {
+        const thumbPath =
+          job.status === "done" &&
+          job.output &&
+          !PACK_ACTIONS.includes(job.action)
+            ? job.output
+            : job.path;
+        return (
+          <div key={job.id} className="flex gap-3 rounded-xl bg-card p-3">
+            <button
+              type="button"
+              onClick={() => onPreview(thumbPath)}
+              title="Aperçu"
+              className="cursor-zoom-in"
+            >
+              <Thumb path={thumbPath} size={52} />
+            </button>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3">
-              <span className="truncate text-sm">{job.name}</span>
-              <span className={`shrink-0 text-xs ${STATUS_STYLE[job.status]}`}>
-                {STATUS_LABEL[job.status]}
-              </span>
-            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate text-sm">{job.name}</span>
+                <span
+                  className={`shrink-0 text-xs ${STATUS_STYLE[job.status]}`}
+                >
+                  {STATUS_LABEL[job.status]}
+                </span>
+              </div>
 
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-              <div
-                className={`h-full rounded-full transition-all duration-300
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className={`h-full rounded-full transition-all duration-300
                 ${job.status === "error" ? "bg-red-500" : job.status === "done" ? "bg-emerald-500" : "bg-accent"}`}
-                style={{ width: `${job.progress}%` }}
-              />
-            </div>
+                  style={{ width: `${job.progress}%` }}
+                />
+              </div>
 
-            {job.output && (
-              <p className="mt-1.5 truncate text-xs text-zinc-500">
-                → {job.output}
-              </p>
-            )}
-            {job.error && (
-              <p className="mt-1.5 text-xs text-red-400">{job.error}</p>
-            )}
+              {job.output && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <p className="min-w-0 flex-1 truncate text-xs text-zinc-500">
+                    → {job.output}
+                  </p>
+                  {job.status === "done" && (
+                    <button
+                      type="button"
+                      onClick={() => onReveal(job.output ?? "")}
+                      title="Ouvrir le dossier (fichier sélectionné)"
+                      className="shrink-0 cursor-pointer rounded-md bg-card px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-accent-soft"
+                    >
+                      📂 Dossier
+                    </button>
+                  )}
+                </div>
+              )}
+              {job.error && (
+                <p className="mt-1.5 text-xs text-red-400">{job.error}</p>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </section>
   );
 }

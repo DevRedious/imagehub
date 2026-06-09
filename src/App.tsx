@@ -2,11 +2,12 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AboutView } from "./components/AboutView";
 import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
 import { ConfirmFilesModal } from "./components/ConfirmFilesModal";
-import { JobList } from "./components/JobList";
+import { HistoryView } from "./components/HistoryView";
 import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
 import { ProjectSkeleton } from "./components/ProjectSkeleton";
@@ -448,13 +449,18 @@ export default function App() {
             : j,
         );
       });
-      // notification proactive en cas d'échec (au-delà de la file de jobs)
+      // feedback proactif (la file de jobs vit désormais dans l'Historique)
       if (payload.status === "error") {
         const name =
           jobsRef.current.find((j) => j.id === payload.job_id)?.name ??
           "Traitement";
         const msg = (payload.error ?? "échec").split("\n")[0].slice(0, 140);
         pushToast("error", `${name} : ${msg}`);
+      } else if (payload.status === "done") {
+        const name =
+          jobsRef.current.find((j) => j.id === payload.job_id)?.name ??
+          "Traitement";
+        pushToast("success", `${name} : terminé`);
       }
     });
     return () => {
@@ -543,6 +549,15 @@ export default function App() {
     setJobs((prev) => [...newJobs, ...prev]);
     setStaged((prev) => prev.filter((p) => !eligible.includes(p)));
     for (const job of newJobs) launchJob(job);
+  }
+
+  const runningCount = jobs.filter(
+    (j) => j.status === "pending" || j.status === "running",
+  ).length;
+
+  /** révèle un fichier de sortie dans le gestionnaire de fichiers */
+  function revealOutput(path: string) {
+    if (path) revealItemInDir(path).catch(() => {});
   }
 
   /** analyse avec modale de scan « théâtrale » */
@@ -637,6 +652,7 @@ export default function App() {
           setConfirmDelete(savedProjects.find((p) => p.root === root) ?? null)
         }
         onConnectNew={connectProject}
+        runningCount={runningCount}
       />
 
       <main className="min-w-0 flex-1 overflow-y-auto">
@@ -647,10 +663,25 @@ export default function App() {
                 ? "🎨 Studio"
                 : view === "about"
                   ? "ℹ️ À propos"
-                  : "📂 Projet"}
+                  : view === "history"
+                    ? "🕑 Historique"
+                    : "📂 Projet"}
             </h1>
-            {view !== "about" && (
-              <div className="ml-auto">
+            {(view === "studio" || view === "project") && (
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setView("history")}
+                  title="Historique des traitements"
+                  className="cursor-pointer rounded-lg bg-card px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-accent-soft"
+                >
+                  🕑 Historique
+                  {runningCount > 0 && (
+                    <span className="ml-1.5 rounded-full bg-accent px-1.5 text-[10px] font-medium text-white">
+                      {runningCount}
+                    </span>
+                  )}
+                </button>
                 <OutputSelect
                   prefs={outputPrefs}
                   onChange={updateOutputPrefs}
@@ -659,7 +690,16 @@ export default function App() {
             )}
           </header>
 
-          {view === "about" ? (
+          {view === "history" ? (
+            <HistoryView
+              jobs={jobs}
+              onClear={() =>
+                setJobs((prev) => prev.filter((j) => j.status !== "done"))
+              }
+              onReveal={revealOutput}
+              onPreview={setPreview}
+            />
+          ) : view === "about" ? (
             <AboutView onCheckForUpdates={checkUpdatesManually} />
           ) : view === "project" && scanModalName ? (
             <ProjectSkeleton />
@@ -712,13 +752,6 @@ export default function App() {
               }
             />
           )}
-
-          <JobList
-            jobs={jobs}
-            onClear={() =>
-              setJobs((prev) => prev.filter((j) => j.status !== "done"))
-            }
-          />
         </div>
       </main>
 

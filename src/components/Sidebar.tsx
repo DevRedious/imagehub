@@ -3,7 +3,7 @@ import { stackIcon } from "../lib/icons";
 import { KIND_LABEL } from "../lib/project";
 import type { SavedProject } from "../lib/projectsStore";
 
-export type View = "studio" | "project" | "about";
+export type View = "studio" | "project" | "about" | "history";
 
 /** icône « info » pour la page à propos */
 function InfoIcon({ size = 16 }: { size?: number }) {
@@ -93,6 +93,7 @@ interface Props {
   onOpenProject: (root: string) => void;
   onRemoveProject: (root: string) => void;
   onConnectNew: () => void;
+  runningCount: number;
 }
 
 /** mode replié : pastille circulaire centrée, hover sur l'élément lui-même */
@@ -110,6 +111,7 @@ export function Sidebar({
   onOpenProject,
   onRemoveProject,
   onConnectNew,
+  runningCount,
 }: Props) {
   const navBtn = (active: boolean) =>
     `flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors cursor-pointer
@@ -174,6 +176,26 @@ export function Sidebar({
       >
         <span className="text-base">🎨</span>
         {!collapsed && "Studio"}
+      </button>
+
+      <button
+        type="button"
+        className={`relative ${
+          collapsed ? railBtn(view === "history") : navBtn(view === "history")
+        }`}
+        onClick={() => onView("history")}
+        title={collapsed ? "Historique" : undefined}
+      >
+        <span className="text-base">🕑</span>
+        {!collapsed && "Historique"}
+        {runningCount > 0 &&
+          (collapsed ? (
+            <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-accent" />
+          ) : (
+            <span className="ml-auto rounded-full bg-accent px-1.5 text-[10px] font-medium text-white">
+              {runningCount}
+            </span>
+          ))}
       </button>
 
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
