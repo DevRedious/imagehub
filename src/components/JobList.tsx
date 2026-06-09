@@ -86,9 +86,9 @@ export function JobList({ jobs, onClear, onReveal, onPreview }: Props) {
                       type="button"
                       onClick={() => onReveal(job.output ?? "")}
                       title="Ouvrir le dossier (fichier sélectionné)"
-                      className="shrink-0 cursor-pointer rounded-md bg-card px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:bg-accent-soft"
+                      className="shrink-0 cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
                     >
-                      📂 Dossier
+                      📂 Ouvrir le dossier
                     </button>
                   )}
                 </div>

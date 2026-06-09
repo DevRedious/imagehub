@@ -508,17 +508,26 @@ export default function App() {
   function runAction(action: ActionId) {
     const def = ACTIONS.find((a) => a.id === action);
     if (!def) return;
-    const eligible = staged.filter((p) => actionAccepts(def, p));
-    // plus de silence : aucun fichier compatible → on explique pourquoi
+    const typeOk = staged.filter((p) => actionAccepts(def, p));
+    // on ne (re)lance que les images « au repos » : celles déjà traitées ou en
+    // cours gardent leur tuile/résultat dans la zone.
+    const eligible = typeOk.filter((p) => !jobByPath.has(p));
     if (eligible.length === 0) {
-      const need = def.accepts.length ? def.accepts.join(", ") : "une image";
-      pushToast(
-        "error",
-        `Aucun fichier compatible avec « ${def.label} » — ${need} requis`,
-      );
+      if (typeOk.length > 0) {
+        pushToast(
+          "info",
+          `Déjà traité(s) — retire ces images ou dépose-en d'autres pour « ${def.label} »`,
+        );
+      } else {
+        const need = def.accepts.length ? def.accepts.join(", ") : "une image";
+        pushToast(
+          "error",
+          `Aucun fichier compatible avec « ${def.label} » — ${need} requis`,
+        );
+      }
       return;
     }
-    const ignored = staged.length - eligible.length;
+    const ignored = staged.length - typeOk.length;
     if (ignored > 0) {
       pushToast(
         "info",
@@ -547,13 +556,21 @@ export default function App() {
       progress: 0,
     }));
     setJobs((prev) => [...newJobs, ...prev]);
-    setStaged((prev) => prev.filter((p) => !eligible.includes(p)));
+    // les images restent dans la zone : leurs tuiles s'animent selon le job
     for (const job of newJobs) launchJob(job);
   }
 
   const runningCount = jobs.filter(
     (j) => j.status === "pending" || j.status === "running",
   ).length;
+
+  // dernier job par chemin d'origine (jobs préfixés = plus récents en tête) :
+  // pilote l'animation de chaque tuile du Studio.
+  const jobByPath = useMemo(() => {
+    const m = new Map<string, Job>();
+    for (const j of jobs) if (!m.has(j.path)) m.set(j.path, j);
+    return m;
+  }, [jobs]);
 
   /** révèle un fichier de sortie dans le gestionnaire de fichiers */
   function revealOutput(path: string) {
@@ -706,10 +723,13 @@ export default function App() {
           ) : view === "studio" || !project ? (
             <StudioView
               staged={staged}
+              jobByPath={jobByPath}
               onAddFiles={addFiles}
               onRemoveStaged={(p) =>
                 setStaged((prev) => prev.filter((x) => x !== p))
               }
+              onClearStaged={() => setStaged([])}
+              onReveal={revealOutput}
               onRun={runAction}
               onPreview={setPreview}
               tools={tools}
@@ -755,7 +775,13 @@ export default function App() {
         </div>
       </main>
 
-      {preview && <Lightbox path={preview} onClose={() => setPreview(null)} />}
+      {preview && (
+        <Lightbox
+          path={preview}
+          onClose={() => setPreview(null)}
+          onReveal={revealOutput}
+        />
+      )}
 
       {update && (
         <UpdateModal update={update} onDismiss={() => setUpdate(null)} />

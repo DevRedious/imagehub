@@ -5,11 +5,12 @@ import { basename } from "../lib/paths";
 interface Props {
   path: string;
   onClose: () => void;
+  onReveal: (path: string) => void;
 }
 
 /** Aperçu plein écran de l'original (vraie qualité), chargé à la demande.
  *  Fermeture : Échap, clic sur le fond ou sur ✕. */
-export function Lightbox({ path, onClose }: Props) {
+export function Lightbox({ path, onClose, onReveal }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -36,7 +37,20 @@ export function Lightbox({ path, onClose }: Props) {
       />
       <div className="flex max-w-[92vw] items-center gap-3 text-sm text-zinc-300">
         <span className="truncate font-medium">{name}</span>
-        <span className="truncate text-xs text-zinc-500">{path}</span>
+        <span className="hidden truncate text-xs text-zinc-500 sm:block">
+          {path}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReveal(path);
+          }}
+          title="Ouvrir le dossier (fichier sélectionné)"
+          className="shrink-0 cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
+        >
+          📂 Ouvrir le dossier
+        </button>
       </div>
       <button
         type="button"

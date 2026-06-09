@@ -8,14 +8,17 @@ import {
   type ToolsStatus,
 } from "../lib/actions";
 import { extOf } from "../lib/paths";
-import type { ActionId } from "../types/job";
+import type { ActionId, Job } from "../types/job";
 import { ActionBar } from "./ActionBar";
 import { DropZone } from "./DropZone";
 
 interface Props {
   staged: string[];
+  jobByPath: Map<string, Job>;
   onAddFiles: (paths: string[]) => void;
   onRemoveStaged: (path: string) => void;
+  onClearStaged: () => void;
+  onReveal: (path: string) => void;
   onRun: (action: ActionId) => void;
   onPreview: (path: string) => void;
   tools: ToolsStatus | null;
@@ -29,8 +32,11 @@ interface Props {
 
 export function StudioView({
   staged,
+  jobByPath,
   onAddFiles,
   onRemoveStaged,
+  onClearStaged,
+  onReveal,
   onRun,
   onPreview,
   tools,
@@ -50,11 +56,14 @@ export function StudioView({
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {/* Gauche : grande zone de dépôt + galerie des fichiers déposés */}
+      {/* Gauche : grande zone de dépôt + galerie « IA » des fichiers déposés */}
       <DropZone
         staged={staged}
+        jobByPath={jobByPath}
         onAddFiles={onAddFiles}
         onRemoveStaged={onRemoveStaged}
+        onClearStaged={onClearStaged}
+        onReveal={onReveal}
         onPreview={onPreview}
       />
 
