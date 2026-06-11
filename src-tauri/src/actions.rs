@@ -98,8 +98,17 @@ pub(crate) fn run_tool(program: &str, args: &[&str]) -> Result<(), String> {
     let resolved = crate::tools::find_tool(program)
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| program.to_string());
+    // Sous AppImage, le runtime injecte PYTHONHOME/PYTHONPATH/LD_LIBRARY_PATH
+    // pointant dans le bundle monté (/tmp/.mount_*). Les outils externes (rembg
+    // via son venv Python, magick, ffmpeg…) en héritent et plantent — le python
+    // du venv croit trouver sa stdlib dans le bundle : « Failed to import
+    // encodings module ». On nettoie l'environnement avant de les lancer.
     let out = Command::new(&resolved)
         .args(args)
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
         .output()
         .map_err(|e| format!("{program} introuvable : {e}"))?;
     if out.status.success() {

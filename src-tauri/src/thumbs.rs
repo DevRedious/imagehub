@@ -29,6 +29,12 @@ fn ffmpeg_thumb(src: &Path, dest: &Path) -> bool {
         .arg(src)
         .args(["-vf", &scale, "-frames:v", "1"])
         .arg(dest)
+        // Purge l'environnement injecté par l'AppImage (cf. run_tool) : sinon
+        // LD_LIBRARY_PATH pointe dans le bundle monté et casse l'outil externe.
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
