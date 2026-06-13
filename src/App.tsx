@@ -13,6 +13,7 @@ import { OutputSelect } from "./components/OutputSelect";
 import { ProjectSkeleton } from "./components/ProjectSkeleton";
 import { ProjectView } from "./components/ProjectView";
 import { ScanModal } from "./components/ScanModal";
+import { SettingsView } from "./components/SettingsView";
 import { Sidebar, type View } from "./components/Sidebar";
 import { StudioView } from "./components/StudioView";
 import { type Toast, Toaster, type ToastKind } from "./components/Toaster";
@@ -48,6 +49,11 @@ import {
   saveProject,
 } from "./lib/projectsStore";
 import { qualityScore } from "./lib/score";
+import {
+  loadCheckOnLaunch,
+  resetPrefs,
+  saveCheckOnLaunch,
+} from "./lib/settings";
 import {
   checkForUpdate,
   clearJustUpdated,
@@ -115,6 +121,8 @@ export default function App() {
   const [update, setUpdate] = useState<Update | null>(null);
   // version fraîchement installée à confirmer après un redémarrage de MAJ
   const [updatedTo, setUpdatedTo] = useState<string | null>(null);
+  // préférence : vérifier les mises à jour au lancement
+  const [checkOnLaunch, setCheckOnLaunch] = useState(loadCheckOnLaunch);
   // messages éphémères (feedback non bloquant)
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -137,8 +145,9 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // vérifie en arrière-plan si une nouvelle version est publiée
+  // vérifie en arrière-plan si une nouvelle version est publiée (sauf si désactivé)
   useEffect(() => {
+    if (!loadCheckOnLaunch()) return;
     checkForUpdate().then((r) => {
       if (r.status === "available") setUpdate(r.update);
     });
@@ -209,6 +218,29 @@ export default function App() {
   function updateBgModel(m: BgModel) {
     setBgModel(m);
     localStorage.setItem(BG_MODEL_KEY, m);
+  }
+
+  function updateCheckOnLaunch(on: boolean) {
+    setCheckOnLaunch(on);
+    saveCheckOnLaunch(on);
+  }
+
+  const recheckTools = useCallback(() => {
+    setTools(null);
+    invoke<ToolsStatus>("check_tools")
+      .then(setTools)
+      .catch(() => {});
+  }, []);
+
+  // remet les préférences réglables à leurs valeurs par défaut (garde les projets)
+  function resetPreferences() {
+    resetPrefs();
+    updateOutputPrefs({ mode: "subfolder", customDir: null });
+    setQuality("balanced");
+    setAggressiveness(50);
+    setBgModel("u2net");
+    setCheckOnLaunch(true);
+    pushToast("success", "Préférences réinitialisées");
   }
 
   function toggleSidebar() {
@@ -680,9 +712,11 @@ export default function App() {
                 ? "🎨 Studio"
                 : view === "about"
                   ? "ℹ️ À propos"
-                  : view === "history"
-                    ? "🕑 Historique"
-                    : "📂 Projet"}
+                  : view === "settings"
+                    ? "⚙️ Paramètres"
+                    : view === "history"
+                      ? "🕑 Historique"
+                      : "📂 Projet"}
             </h1>
             {(view === "studio" || view === "project") && (
               <div className="ml-auto flex items-center gap-2">
@@ -718,6 +752,16 @@ export default function App() {
             />
           ) : view === "about" ? (
             <AboutView onCheckForUpdates={checkUpdatesManually} />
+          ) : view === "settings" ? (
+            <SettingsView
+              tools={tools}
+              onRecheckTools={recheckTools}
+              outputPrefs={outputPrefs}
+              onOutputChange={updateOutputPrefs}
+              checkOnLaunch={checkOnLaunch}
+              onCheckOnLaunchChange={updateCheckOnLaunch}
+              onReset={resetPreferences}
+            />
           ) : view === "project" && scanModalName ? (
             <ProjectSkeleton />
           ) : view === "studio" || !project ? (

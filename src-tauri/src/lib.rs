@@ -28,6 +28,7 @@ pub fn run() {
             project::delete_files,
             thumbs::make_thumb,
             tools::check_tools,
+            tools::platform_info,
             watcher::watch_project,
             watcher::unwatch_project
         ])

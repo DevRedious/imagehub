@@ -84,6 +84,54 @@ pub struct ToolsStatus {
     pub avifenc: bool,
 }
 
+/// Système + gestionnaire de paquets détecté, pour proposer la bonne commande
+/// d'installation des moteurs dans les Paramètres.
+#[derive(Serialize)]
+pub struct PlatformInfo {
+    /// "linux" | "macos" | "windows"
+    pub os: String,
+    /// "dnf" | "apt" | "pacman" | "zypper" | "winget" | "brew" | "" (inconnu)
+    pub manager: String,
+}
+
+/// Devine le gestionnaire de paquets depuis `ID`/`ID_LIKE` de /etc/os-release.
+fn manager_from_os_release(content: &str) -> &'static str {
+    let mut hay = String::new();
+    for line in content.lines() {
+        if let Some(v) = line.strip_prefix("ID=").or_else(|| line.strip_prefix("ID_LIKE=")) {
+            hay.push_str(&v.trim().trim_matches('"').to_lowercase());
+            hay.push(' ');
+        }
+    }
+    if hay.contains("arch") {
+        "pacman"
+    } else if hay.contains("debian") || hay.contains("ubuntu") {
+        "apt"
+    } else if hay.contains("suse") {
+        "zypper"
+    } else if hay.contains("fedora") || hay.contains("rhel") || hay.contains("centos") {
+        "dnf"
+    } else {
+        ""
+    }
+}
+
+#[tauri::command]
+pub fn platform_info() -> PlatformInfo {
+    let os = std::env::consts::OS;
+    let manager = match os {
+        "linux" => std::fs::read_to_string("/etc/os-release")
+            .ok()
+            .map(|c| manager_from_os_release(&c))
+            .unwrap_or("")
+            .to_string(),
+        "macos" => "brew".to_string(),
+        "windows" => "winget".to_string(),
+        _ => String::new(),
+    };
+    PlatformInfo { os: os.to_string(), manager }
+}
+
 #[tauri::command]
 pub fn check_tools() -> ToolsStatus {
     ToolsStatus {
