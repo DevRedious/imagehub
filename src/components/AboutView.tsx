@@ -43,7 +43,7 @@ const ENGINES: Engine[] = [
   },
   {
     name: "ImageMagick",
-    role: "Icônes ICO multi-tailles",
+    role: "Packs d'icônes & conversions ICO",
     url: "https://imagemagick.org",
   },
   {
@@ -88,8 +88,9 @@ export function AboutView({ onCheckForUpdates }: Props) {
         )}
         <p className="max-w-md text-center text-sm text-zinc-400">
           Boîte à outils locale de traitement d'images : conversions,
-          optimisation AVIF de projets, upscale, détourage et vectorisation — le
-          tout sur ta machine, rien ne sort.
+          optimisation AVIF de projets, upscale, détourage, vectorisation et
+          génération de packs d'icônes (web/app/desktop) — le tout sur ta
+          machine, rien ne sort.
         </p>
 
         <div className="flex flex-col items-center gap-2">
