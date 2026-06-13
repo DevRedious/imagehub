@@ -93,7 +93,7 @@ fn out_path(input: &str, mode: &str, custom_dir: &Option<String>, ext: &str, suf
     Ok(dest.to_string_lossy().to_string())
 }
 
-pub(crate) fn run_tool(program: &str, args: &[&str]) -> Result<(), String> {
+fn run_raw(program: &str, args: &[&str]) -> Result<std::process::Output, String> {
     // résolution multi-OS : sidecar bundlé → ~/.local/bin → PATH
     let resolved = crate::tools::find_tool(program)
         .map(|p| p.to_string_lossy().to_string())
@@ -103,16 +103,31 @@ pub(crate) fn run_tool(program: &str, args: &[&str]) -> Result<(), String> {
     // via son venv Python, magick, ffmpeg…) en héritent et plantent — le python
     // du venv croit trouver sa stdlib dans le bundle : « Failed to import
     // encodings module ». On nettoie l'environnement avant de les lancer.
-    let out = Command::new(&resolved)
+    Command::new(&resolved)
         .args(args)
         .env_remove("PYTHONHOME")
         .env_remove("PYTHONPATH")
         .env_remove("LD_LIBRARY_PATH")
         .env_remove("LD_PRELOAD")
         .output()
-        .map_err(|e| format!("{program} introuvable : {e}"))?;
+        .map_err(|e| format!("{program} introuvable : {e}"))
+}
+
+pub(crate) fn run_tool(program: &str, args: &[&str]) -> Result<(), String> {
+    let out = run_raw(program, args)?;
     if out.status.success() {
         Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Comme `run_tool`, mais renvoie le stdout (trimé) — utilisé pour interroger un
+/// outil (ex. échantillonner une couleur de pixel via `magick … info:`).
+pub(crate) fn run_tool_capture(program: &str, args: &[&str]) -> Result<String, String> {
+    let out = run_raw(program, args)?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
