@@ -1882,8 +1882,9 @@ dependencies = [
 
 [[package]]
 name = "imagehub"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
+ "dirs",
  "image",
  "notify",
  "serde",

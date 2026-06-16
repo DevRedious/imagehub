@@ -23,6 +23,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             actions::run_action,
             actions::deliver_prompt,
+            actions::studio_dir,
             project::analyze_project,
             project::scan_image_usages,
             project::delete_files,

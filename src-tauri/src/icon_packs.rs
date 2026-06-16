@@ -165,6 +165,26 @@ fn tone_frac(src: &str, seq: &str, thresh: &str, negate: bool) -> Result<f32, St
     Ok(run_tool_capture("magick", &args)?.parse().unwrap_or(0.0))
 }
 
+/// Fraction de pixels opaques nettement colorés (saturation > 25 %), × couverture
+/// alpha. Sert à écarter du double thème les logos avant tout colorés (un éclair
+/// jaune…) : leur zone blanche/noire n'est qu'accessoire (dégradé, halo) et
+/// l'inverser dénaturerait le logo au lieu de produire une vraie variante de thème.
+fn colored_frac(src: &str) -> Result<f32, String> {
+    Ok(run_tool_capture(
+        "magick",
+        &[
+            src,
+            "(", "-clone", "0", "-colorspace", "HSL", "-channel", "G", "-separate",
+                 "+channel", "-threshold", "25%", ")",
+            "(", "-clone", "0", "-alpha", "extract", ")",
+            "-delete", "0", "-compose", "multiply", "-composite",
+            "-format", "%[fx:mean]", "info:",
+        ],
+    )?
+    .parse()
+    .unwrap_or(0.0))
+}
+
 /// Le logo se prête-t-il à une paire dark/light (zone blanche ou noire notable à
 /// inverser) ? `None` → un seul set. `Some(true)` → le blanc domine, l'original est
 /// la variante « dark » (contenu clair pour fond sombre) ; `Some(false)` → le noir
@@ -181,12 +201,18 @@ fn detect_theme(src: &str) -> Result<Option<bool>, String> {
     }
     let white = tone_frac(src, "min", "80%", false)? / cov;
     let black = tone_frac(src, "max", "20%", true)? / cov;
+    let tone = white.max(black);
     // < 5 % des pixels opaques → l'inversion ne changerait quasi rien : un seul set.
-    if white.max(black) < 0.05 {
-        Ok(None)
-    } else {
-        Ok(Some(white >= black))
+    if tone < 0.05 {
+        return Ok(None);
     }
+    // Logo avant tout coloré (éclair jaune, dégradé teinté…) : la teinte achromatique
+    // est minoritaire face à la couleur ; un thème inversé ne ferait que la dénaturer
+    // sans produire de vraie variante. → un seul set.
+    if colored_frac(src)? / cov > tone {
+        return Ok(None);
+    }
+    Ok(Some(white >= black))
 }
 
 /// Inverse les pixels achromatiques (blanc↔noir, gris inversés) en préservant les
@@ -336,6 +362,14 @@ fn plan(
         return Ok((dir, specs, in_project));
     }
 
+    // Studio libre, dépôt ImageHub : packs rangés sous `icones/`.
+    if mode == "depot" {
+        let dir = crate::actions::studio_root()
+            .join("icones")
+            .join(format!("{stem}-{label}"));
+        return Ok((dir, generic_specs, false));
+    }
+
     let base = resolve_out_dir(input, mode, custom_dir, label);
     let dir = if mode == "subfolder" {
         base.join(stem)
@@ -343,6 +377,27 @@ fn plan(
         base.join(format!("{stem}-{label}"))
     };
     Ok((dir, generic_specs, false))
+}
+
+/// Rasterise un SVG en rendu maître 1024×1024 transparent (ratio préservé via
+/// Inkscape, logo centré par ImageMagick). Sans ce recadrage, un logo large
+/// (mot-symbole « GitHub »…) serait étiré pour remplir le carré. `tag` distingue
+/// les fichiers temporaires d'un même job (« dark » / « light »).
+fn render_master(input: &str, job_id: &str, tag: &str) -> Result<String, String> {
+    let raw = std::env::temp_dir().join(format!("imagehub-pack-{job_id}-{tag}-raw.png"));
+    run_tool(
+        "inkscape",
+        &[input, "--export-type=png", &master_dim(input),
+          &format!("--export-filename={}", raw.display())],
+    )?;
+    let master = std::env::temp_dir().join(format!("imagehub-pack-{job_id}-{tag}.png"));
+    run_tool(
+        "magick",
+        &[&raw.to_string_lossy(), "-background", "none", "-gravity", "center",
+          "-extent", "1024x1024", &master.to_string_lossy()],
+    )?;
+    let _ = fs::remove_file(&raw);
+    Ok(master.to_string_lossy().to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -355,66 +410,80 @@ pub fn generate(
     kind: &str,
     project_kind: &Option<String>,
     project_root: &Option<String>,
+    dual_theme: bool,
+    light_input: &Option<String>,
 ) -> Result<String, String> {
     let p = Path::new(input);
     let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     if ext != "svg" {
         return Err("Cette action n'accepte que du SVG (qualité parfaite à toutes les tailles).".into());
     }
-    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("icon");
+    // Duo fourni : le SVG « dark » est `<base>-dark.svg` → le pack reprend `<base>`.
+    let mut stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("icon").to_string();
+    if light_input.is_some() && stem.to_lowercase().ends_with("-dark") {
+        stem.truncate(stem.len() - "-dark".len());
+    }
     let project = project_kind.as_deref().zip(project_root.as_deref());
 
-    let (dir, specs, in_project) = plan(kind, stem, p, mode, custom_dir, project)?;
+    let (dir, specs, in_project) = plan(kind, &stem, p, mode, custom_dir, project)?;
     fs::create_dir_all(&dir).map_err(|e| format!("Création du dossier impossible : {e}"))?;
 
-    // Rendu maître : 1024px sur le plus grand côté (ratio préservé via Inkscape),
-    // puis centré dans un carré 1024×1024 transparent. Sans ce recadrage, un logo
-    // large (mot-symbole « GitHub »…) serait étiré pour remplir le carré.
-    let raw = std::env::temp_dir().join(format!("imagehub-pack-{job_id}-raw.png"));
-    run_tool(
-        "inkscape",
-        &[input, "--export-type=png", &master_dim(input),
-          &format!("--export-filename={}", raw.display())],
-    )?;
-    let tmp = std::env::temp_dir().join(format!("imagehub-pack-{job_id}.png"));
-    run_tool(
-        "magick",
-        &[&raw.to_string_lossy(), "-background", "none", "-gravity", "center",
-          "-extent", "1024x1024", &tmp.to_string_lossy()],
-    )?;
-    let _ = fs::remove_file(&raw);
-    let src = tmp.to_string_lossy().to_string();
+    let src = render_master(input, job_id, "dark")?;
     let _ = fs::copy(input, dir.join("icon.svg"));
 
-    // Paire dark/light si le logo s'y prête (blanc ou noir à inverser), sauf en
-    // injection directe dans un projet (le framework attend des noms fixes).
-    let theme = if in_project { None } else { detect_theme(&src)? };
+    // Variantes à écrire : (rendu maître, suffixe). Trois cas, par priorité :
+    //  1. duo fourni par l'utilisateur (deux SVG nommés dark/light) → on rend chacun
+    //     TEL QUEL, aucune recolorisation. Prioritaire même en injection projet :
+    //     fournir deux SVG est un choix explicite, on honore les deux variantes.
+    //  2. double thème auto si le logo monochrome s'y prête (blanc/noir à inverser),
+    //     sauf en injection projet (le framework attend des noms fixes) ;
+    //  3. sinon → un seul set.
+    let mut variants: Vec<(String, &str)> = Vec::new();
+    let mut tmps: Vec<String> = vec![src.clone()];
+    if let Some(light) = light_input.as_deref() {
+        let light_master = render_master(light, job_id, "light")?;
+        variants.push((src.clone(), "dark"));
+        variants.push((light_master.clone(), "light"));
+        tmps.push(light_master);
+    } else {
+        let theme = if in_project || !dual_theme { None } else { detect_theme(&src)? };
+        match theme {
+            None => variants.push((src.clone(), "")),
+            Some(white_dominant) => {
+                let inv = std::env::temp_dir()
+                    .join(format!("imagehub-pack-{job_id}-inv.png"))
+                    .to_string_lossy()
+                    .to_string();
+                invert_achromatic(&src, &inv)?;
+                // blanc dominant → original = contenu clair pour fond sombre = « dark »
+                let (orig, other) =
+                    if white_dominant { ("dark", "light") } else { ("light", "dark") };
+                variants.push((src.clone(), orig));
+                variants.push((inv.clone(), other));
+                tmps.push(inv);
+            }
+        }
+    }
 
-    let total = (specs.len() as u32 + 2) * if theme.is_some() { 2 } else { 1 };
+    let total = (specs.len() as u32 + 2) * variants.len() as u32;
     let mut step = 0u32;
     let mut bump = || {
         step += 1;
         emit(app, job_id, "running", (10 + 85 * step / total) as u8, None, None);
     };
 
-    match theme {
-        None => write_pack(&dir, specs, kind, &src, "", &mut bump)?,
-        Some(white_dominant) => {
-            let inv = std::env::temp_dir().join(format!("imagehub-pack-{job_id}-inv.png"));
-            let inv_s = inv.to_string_lossy().to_string();
-            invert_achromatic(&src, &inv_s)?;
-            // blanc dominant → original = contenu clair pour fond sombre = « dark »
-            let (orig, other) = if white_dominant { ("dark", "light") } else { ("light", "dark") };
-            write_pack(&dir, specs, kind, &src, orig, &mut bump)?;
-            write_pack(&dir, specs, kind, &inv_s, other, &mut bump)?;
-            let _ = fs::remove_file(&inv);
-        }
+    for (master, suffix) in &variants {
+        write_pack(&dir, specs, kind, master, suffix, &mut bump)?;
     }
 
-    let _ = fs::remove_file(&tmp);
+    for f in &tmps {
+        let _ = fs::remove_file(f);
+    }
 
-    // Prompt d'intégration → presse-papier + notification
-    let prompt = prompt_for(kind, &dir.to_string_lossy(), project, in_project);
+    // Prompt d'intégration → presse-papier + notification. `dual` = duo de
+    // variantes dark/light écrit → le prompt adapte fichiers et câblage.
+    let dual = variants.len() > 1;
+    let prompt = prompt_for(kind, &dir.to_string_lossy(), project, in_project, dual);
     match app.clipboard().write_text(prompt) {
         Ok(()) => notify(
             app,

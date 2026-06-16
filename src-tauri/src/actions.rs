@@ -76,14 +76,74 @@ pub(crate) fn resolve_out_dir(input: &Path, mode: &str, custom_dir: &Option<Stri
     }
 }
 
+/// Racine du « dépôt » du Studio libre : un dossier connu et prévisible sous le
+/// répertoire d'images de l'utilisateur (localisé via XDG ; FR → `~/Images`).
+/// Repli `~/Images` puis racine du home si XDG est indisponible.
+pub(crate) fn studio_root() -> PathBuf {
+    dirs::picture_dir()
+        .unwrap_or_else(|| crate::tools::home_dir().join("Images"))
+        .join("ImageHub")
+}
+
+/// Sous-dossier du dépôt selon le type d'action (rangement par usage).
+pub(crate) fn studio_subdir(action: &str) -> &'static str {
+    match action {
+        "webIcons" | "appIcons" | "desktopIcons" => "icones",
+        "removeBg" | "bgToAvif" => "sans-fond",
+        "upscale" => "agrandi",
+        "pngToSvg" => "vectorise",
+        _ => "converti", // toAvif, svgToPng, toIco, optimizeAvif…
+    }
+}
+
+/// Chemin de l'app pour le dépôt du Studio libre (affiché par l'UI).
+#[tauri::command]
+pub fn studio_dir() -> String {
+    studio_root().to_string_lossy().to_string()
+}
+
+/// Dossier où écrire une action « fichier » selon le contexte, par priorité :
+/// 1. `optimizeAvif` → en place (remplace l'original) ;
+/// 2. projet connecté (Studio projet) → à côté de la source si elle est dans le
+///    projet, sinon dans le dossier d'assets détecté (repli `public/`, repli racine) ;
+/// 3. Studio libre, mode `depot` → `studio_root()/<sous-dossier d'action>` ;
+/// 4. sinon → préférences de sortie classiques (`same`/`subfolder`/`custom`).
+fn file_out_dir(
+    input: &Path,
+    action: &str,
+    mode: &str,
+    custom_dir: &Option<String>,
+    ext: &str,
+    project_root: &Option<String>,
+    project_asset_dir: &Option<String>,
+) -> PathBuf {
+    if action == "optimizeAvif" {
+        return input.parent().unwrap_or(Path::new(".")).to_path_buf();
+    }
+    if let Some(root) = project_root.as_deref() {
+        let root = Path::new(root);
+        if input.starts_with(root) {
+            return input.parent().unwrap_or(root).to_path_buf();
+        }
+        return match project_asset_dir.as_deref() {
+            Some(a) => PathBuf::from(a),
+            None => {
+                let pub_dir = root.join("public");
+                if pub_dir.is_dir() { pub_dir } else { root.to_path_buf() }
+            }
+        };
+    }
+    if mode == "depot" {
+        return studio_root().join(studio_subdir(action));
+    }
+    resolve_out_dir(input, mode, custom_dir, ext)
+}
+
 /// Chemin complet de sortie ; crée le dossier au besoin et évite d'écraser
 /// un fichier existant (suffixe -1, -2, …). `suffix` est accolé au nom
 /// (ex. `@4x` pour l'upscale, `-nobg` pour le détourage).
-fn out_path(input: &str, mode: &str, custom_dir: &Option<String>, ext: &str, suffix: &str) -> Result<String, String> {
-    let p = Path::new(input);
-    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    let dir = resolve_out_dir(p, mode, custom_dir, ext);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Création du dossier impossible : {e}"))?;
+fn out_path(dir: &Path, stem: &str, ext: &str, suffix: &str) -> Result<String, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("Création du dossier impossible : {e}"))?;
     let mut dest = dir.join(format!("{stem}{suffix}.{ext}"));
     let mut i = 1;
     while dest.exists() {
@@ -319,9 +379,12 @@ pub async fn run_action(
     custom_dir: Option<String>,
     project_kind: Option<String>,
     project_root: Option<String>,
+    project_asset_dir: Option<String>,
     quality: Option<u8>,
     aggressiveness: Option<u8>,
     model: Option<String>,
+    dual_theme: Option<bool>,
+    light_input: Option<String>,
 ) -> Result<(), String> {
     emit(&app, &job_id, "running", 15, None, None);
 
@@ -331,7 +394,8 @@ pub async fn run_action(
         if matches!(action.as_str(), "webIcons" | "appIcons" | "desktopIcons") {
             return crate::icon_packs::generate(
                 &app2, &job2, &path, &output_mode, &custom_dir, &action,
-                &project_kind, &project_root,
+                &project_kind, &project_root, dual_theme.unwrap_or(true),
+                &light_input,
             );
         }
         let (ext, suffix) = match action.as_str() {
@@ -344,9 +408,12 @@ pub async fn run_action(
             "pngToSvg" => ("svg", ""),
             _ => return Err(format!("Action inconnue : {action}")),
         };
-        // optimisation en place : AVIF à côté, puis suppression de l'original
-        let mode = if action == "optimizeAvif" { "same" } else { output_mode.as_str() };
-        let dest = out_path(&path, mode, &custom_dir, ext, suffix)?;
+        let p = Path::new(&path);
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        let dir = file_out_dir(
+            p, &action, &output_mode, &custom_dir, ext, &project_root, &project_asset_dir,
+        );
+        let dest = out_path(&dir, stem, ext, suffix)?;
         let model = model.as_deref().unwrap_or("u2net");
         match action.as_str() {
             "toIco" => to_ico(&path, &dest)?,
