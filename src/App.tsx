@@ -33,7 +33,7 @@ import {
   type OutputPrefs,
   saveOutputPrefs,
 } from "./lib/output";
-import { basename, isSupportedImage } from "./lib/paths";
+import { basename, isSupportedImage, themeVariant } from "./lib/paths";
 import {
   type HeavyImage,
   type ImageUsages,
@@ -60,7 +60,12 @@ import {
   pendingUpdatedVersion,
   type Update,
 } from "./lib/updater";
-import type { ActionId, Job, JobProgressEvent } from "./types/job";
+import {
+  type ActionId,
+  type Job,
+  type JobProgressEvent,
+  PACK_ACTIONS,
+} from "./types/job";
 
 interface OptimizeRun {
   remaining: Set<string>;
@@ -71,9 +76,16 @@ const SIDEBAR_KEY = "imagehub.sidebarCollapsed";
 const QUALITY_KEY = "imagehub.avifQuality";
 const AGGRO_KEY = "imagehub.bgAggressiveness";
 const BG_MODEL_KEY = "imagehub.bgModel";
+const DUAL_THEME_KEY = "imagehub.dualTheme";
 
 export default function App() {
   const [staged, setStaged] = useState<string[]>([]);
+  // Studio projet : fichiers déposés dans l'onglet Studio de la vue Projet
+  // (distincts du Studio libre pour un contexte de sortie sans ambiguïté).
+  const [projectStaged, setProjectStaged] = useState<string[]>([]);
+  const [projectTab, setProjectTab] = useState<"audit" | "studio">("audit");
+  // chemin du dépôt du Studio libre (affiché dans l'UI), résolu côté Rust
+  const [depotDir, setDepotDir] = useState<string>("");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [outputPrefs, setOutputPrefs] = useState<OutputPrefs>(loadOutputPrefs);
   const [quality, setQuality] = useState<QualityPreset>(
@@ -88,6 +100,10 @@ export default function App() {
   });
   const [bgModel, setBgModel] = useState<BgModel>(
     () => (localStorage.getItem(BG_MODEL_KEY) as BgModel | null) ?? "u2net",
+  );
+  // packs d'icônes : générer la paire dark/light (auto-détectée) ou un set unique.
+  const [dualTheme, setDualTheme] = useState<boolean>(
+    () => localStorage.getItem(DUAL_THEME_KEY) !== "0",
   );
   const [view, setView] = useState<View>("studio");
   const [collapsed, setCollapsed] = useState(
@@ -142,6 +158,13 @@ export default function App() {
   useEffect(() => {
     invoke<ToolsStatus>("check_tools")
       .then(setTools)
+      .catch(() => {});
+  }, []);
+
+  // chemin du dépôt du Studio libre (pour l'afficher dans l'UI)
+  useEffect(() => {
+    invoke<string>("studio_dir")
+      .then(setDepotDir)
       .catch(() => {});
   }, []);
 
@@ -218,6 +241,11 @@ export default function App() {
   function updateBgModel(m: BgModel) {
     setBgModel(m);
     localStorage.setItem(BG_MODEL_KEY, m);
+  }
+
+  function updateDualTheme(on: boolean) {
+    setDualTheme(on);
+    localStorage.setItem(DUAL_THEME_KEY, on ? "1" : "0");
   }
 
   function updateCheckOnLaunch(on: boolean) {
@@ -500,8 +528,8 @@ export default function App() {
     };
   }, [onOptimizeJobEnd, pushToast]);
 
-  const addFiles = useCallback(
-    (paths: string[]) => {
+  const addFilesTo = useCallback(
+    (setter: typeof setStaged, paths: string[]) => {
       // écarte dossiers et fichiers non-image (silencieux jusqu'ici)
       const ok = paths.filter(isSupportedImage);
       const ignored = paths.length - ok.length;
@@ -511,23 +539,51 @@ export default function App() {
           `${ignored} fichier(s) ignoré(s) (format non pris en charge)`,
         );
       }
-      if (ok.length > 0) setStaged((prev) => [...new Set([...prev, ...ok])]);
+      if (ok.length > 0) setter((prev) => [...new Set([...prev, ...ok])]);
     },
     [pushToast],
   );
+  const addFiles = useCallback(
+    (paths: string[]) => addFilesTo(setStaged, paths),
+    [addFilesTo],
+  );
+  const addProjectFiles = useCallback(
+    (paths: string[]) => addFilesTo(setProjectStaged, paths),
+    [addFilesTo],
+  );
 
-  function launchJob(job: Job) {
+  // libellé court de la destination du Studio libre selon les préférences
+  function studioDest(): string {
+    switch (outputPrefs.mode) {
+      case "depot":
+        return depotDir || "~/Images/ImageHub";
+      case "custom":
+        return outputPrefs.customDir || "dossier à choisir…";
+      case "same":
+        return "à côté de chaque original";
+      default:
+        return "sous-dossier par format, à côté de l'original";
+    }
+  }
+
+  // Le contexte de sortie est EXPLICITE : `proj` non nul = Studio projet (écrit
+  // dans le projet) ; null = Studio libre (dépôt ImageHub via outputPrefs). Plus
+  // de lecture implicite du projet connecté → fin de l'erreur silencieuse.
+  function launchJob(job: Job, proj: ProjectInfo | null) {
     invoke("run_action", {
       jobId: job.id,
       path: job.path,
       action: job.action,
       outputMode: outputPrefs.mode,
       customDir: outputPrefs.customDir,
-      projectKind: projectRef.current?.kind ?? null,
-      projectRoot: projectRef.current?.root ?? null,
+      projectKind: proj?.kind ?? null,
+      projectRoot: proj?.root ?? null,
+      projectAssetDir: proj?.asset_dir ?? null,
       quality: qualityValue(quality),
       aggressiveness,
       model: bgModel,
+      dualTheme,
+      lightInput: job.lightPath ?? null,
     }).catch((e) => {
       setJobs((prev) =>
         prev.map((j) =>
@@ -537,10 +593,16 @@ export default function App() {
     });
   }
 
-  function runAction(action: ActionId) {
+  // `source` = liste déposée du contexte (Studio libre ou Studio projet) ;
+  // `proj` = projet cible (null pour le Studio libre).
+  function runAction(
+    action: ActionId,
+    source: string[],
+    proj: ProjectInfo | null,
+  ) {
     const def = ACTIONS.find((a) => a.id === action);
     if (!def) return;
-    const typeOk = staged.filter((p) => actionAccepts(def, p));
+    const typeOk = source.filter((p) => actionAccepts(def, p));
     // on ne (re)lance que les images « au repos » : celles déjà traitées ou en
     // cours gardent leur tuile/résultat dans la zone.
     const eligible = typeOk.filter((p) => !jobByPath.has(p));
@@ -559,7 +621,7 @@ export default function App() {
       }
       return;
     }
-    const ignored = staged.length - typeOk.length;
+    const ignored = source.length - typeOk.length;
     if (ignored > 0) {
       pushToast(
         "info",
@@ -579,17 +641,44 @@ export default function App() {
         `Modèle « ${label} » : 1er usage = téléchargement, ça peut prendre un moment`,
       );
     }
-    const newJobs: Job[] = eligible.map((path) => ({
+    const single = (path: string, lightPath?: string): Job => ({
       id: crypto.randomUUID(),
       path,
       name: basename(path),
       action,
       status: "pending",
       progress: 0,
-    }));
+      lightPath,
+    });
+    let newJobs: Job[];
+    // Packs + double thème actif : appaire les SVG nommés `<base>-dark` / `<base>-light`
+    // en UN job (deux sets fournis tels quels, sans recolorisation). Les SVG non
+    // appariés restent des jobs simples.
+    if (PACK_ACTIONS.includes(action) && dualTheme) {
+      const byBase = new Map<string, { dark?: string; light?: string }>();
+      for (const p of eligible) {
+        const v = themeVariant(p);
+        if (!v) continue;
+        const e = byBase.get(v.base) ?? {};
+        e[v.variant] = p;
+        byBase.set(v.base, e);
+      }
+      const paired = new Set<string>();
+      newJobs = [];
+      for (const { dark, light } of byBase.values()) {
+        if (dark && light) {
+          paired.add(dark);
+          paired.add(light);
+          newJobs.push(single(dark, light));
+        }
+      }
+      for (const p of eligible) if (!paired.has(p)) newJobs.push(single(p));
+    } else {
+      newJobs = eligible.map((p) => single(p));
+    }
     setJobs((prev) => [...newJobs, ...prev]);
     // les images restent dans la zone : leurs tuiles s'animent selon le job
-    for (const job of newJobs) launchJob(job);
+    for (const job of newJobs) launchJob(job, proj);
   }
 
   const runningCount = jobs.filter(
@@ -600,7 +689,11 @@ export default function App() {
   // pilote l'animation de chaque tuile du Studio.
   const jobByPath = useMemo(() => {
     const m = new Map<string, Job>();
-    for (const j of jobs) if (!m.has(j.path)) m.set(j.path, j);
+    for (const j of jobs) {
+      if (!m.has(j.path)) m.set(j.path, j);
+      // un pack apparié pilote aussi la tuile de son SVG « light »
+      if (j.lightPath && !m.has(j.lightPath)) m.set(j.lightPath, j);
+    }
     return m;
   }, [jobs]);
 
@@ -684,7 +777,8 @@ export default function App() {
     };
     setOptimizing(true);
     setJobs((prev) => [...newJobs, ...prev]);
-    for (const job of newJobs) launchJob(job);
+    // optimizeAvif est routé en place côté backend (le projet n'altère rien ici)
+    for (const job of newJobs) launchJob(job, project);
   }
 
   return (
@@ -774,7 +868,7 @@ export default function App() {
               }
               onClearStaged={() => setStaged([])}
               onReveal={revealOutput}
-              onRun={runAction}
+              onRun={(a) => runAction(a, staged, null)}
               onPreview={setPreview}
               tools={tools}
               quality={quality}
@@ -783,6 +877,9 @@ export default function App() {
               onAggressivenessChange={updateAggressiveness}
               bgModel={bgModel}
               onBgModelChange={updateBgModel}
+              dualTheme={dualTheme}
+              onDualThemeChange={updateDualTheme}
+              destination={studioDest()}
             />
           ) : (
             <ProjectView
@@ -795,6 +892,32 @@ export default function App() {
               score={score}
               optimized={optimized}
               unused={unused}
+              tab={projectTab}
+              onTab={setProjectTab}
+              studio={
+                <StudioView
+                  staged={projectStaged}
+                  jobByPath={jobByPath}
+                  onAddFiles={addProjectFiles}
+                  onRemoveStaged={(p) =>
+                    setProjectStaged((prev) => prev.filter((x) => x !== p))
+                  }
+                  onClearStaged={() => setProjectStaged([])}
+                  onReveal={revealOutput}
+                  onRun={(a) => runAction(a, projectStaged, project)}
+                  onPreview={setPreview}
+                  tools={tools}
+                  quality={quality}
+                  onQualityChange={updateQuality}
+                  aggressiveness={aggressiveness}
+                  onAggressivenessChange={updateAggressiveness}
+                  bgModel={bgModel}
+                  onBgModelChange={updateBgModel}
+                  dualTheme={dualTheme}
+                  onDualThemeChange={updateDualTheme}
+                  destination={`${project.name} — ${project.asset_dir ?? project.root} (packs intégrés à la stack)`}
+                />
+              }
               onDeleteUnused={(items) => setConfirmFiles(items)}
               onPreview={setPreview}
               onToggle={toggleSelected}

@@ -29,6 +29,9 @@ export interface Job {
   progress: number;
   output?: string;
   error?: string;
+  /** Pack à deux variantes fournies : SVG « light » apparié au `path` (« dark »).
+   *  Présent uniquement pour les PACK_ACTIONS quand un duo nommé a été détecté. */
+  lightPath?: string;
 }
 
 export interface JobProgressEvent {

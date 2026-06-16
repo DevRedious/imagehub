@@ -1,4 +1,4 @@
-export type OutputMode = "same" | "subfolder" | "custom";
+export type OutputMode = "depot" | "same" | "subfolder" | "custom";
 
 export interface OutputPrefs {
   mode: OutputMode;
@@ -8,6 +8,11 @@ export interface OutputPrefs {
 const KEY = "imagehub.output";
 
 export const OUTPUT_MODES: { id: OutputMode; label: string; hint: string }[] = [
+  {
+    id: "depot",
+    label: "Dépôt ImageHub",
+    hint: "Dans ~/Images/ImageHub, rangé par type (icones/, sans-fond/, converti/…)",
+  },
   {
     id: "same",
     label: "À côté de l'original",
@@ -32,7 +37,7 @@ export function loadOutputPrefs(): OutputPrefs {
   } catch {
     // prefs corrompues : on repart sur le défaut
   }
-  return { mode: "subfolder", customDir: null };
+  return { mode: "depot", customDir: null };
 }
 
 export function saveOutputPrefs(prefs: OutputPrefs): void {
