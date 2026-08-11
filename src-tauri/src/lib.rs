@@ -4,6 +4,7 @@ mod icon_packs;
 mod icon_prompts;
 mod inputs;
 mod project;
+mod qr;
 mod queue;
 mod thumbs;
 mod tools;
@@ -36,6 +37,14 @@ pub fn run() {
             emoji::save_emoji_svg,
             emoji::save_emoji_png,
             emoji::save_emoji_animation,
+            qr::qr_matrix,
+            qr::verify_qr,
+            qr::detect_theme_colors,
+            qr::read_font,
+            qr::read_image_data_url,
+            qr::find_fonts,
+            qr::qr_dir,
+            qr::save_qr_png,
             queue::cancel_jobs,
             thumbs::make_thumb,
             tools::check_tools,

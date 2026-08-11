@@ -12,7 +12,8 @@ import { HistoryView } from "./components/HistoryView";
 import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
 import { ProjectSkeleton } from "./components/ProjectSkeleton";
-import { ProjectView } from "./components/ProjectView";
+import { type ProjectTab, ProjectView } from "./components/ProjectView";
+import { QrView } from "./components/QrView";
 import { ScanModal } from "./components/ScanModal";
 import { SettingsView } from "./components/SettingsView";
 import { Sidebar, type View } from "./components/Sidebar";
@@ -93,7 +94,7 @@ export default function App() {
   // Studio projet : fichiers déposés dans l'onglet Studio de la vue Projet
   // (distincts du Studio libre pour un contexte de sortie sans ambiguïté).
   const [projectStaged, setProjectStaged] = useState<string[]>([]);
-  const [projectTab, setProjectTab] = useState<"audit" | "studio">("audit");
+  const [projectTab, setProjectTab] = useState<ProjectTab>("audit");
   // chemin du dépôt du Studio libre (affiché dans l'UI), résolu côté Rust
   const [depotDir, setDepotDir] = useState<string>("");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -903,13 +904,15 @@ export default function App() {
                 ? "🎨 Studio"
                 : view === "emojis"
                   ? "😀 Créateur d'emojis"
-                  : view === "about"
-                    ? "ℹ️ À propos"
-                    : view === "settings"
-                      ? "⚙️ Paramètres"
-                      : view === "history"
-                        ? "🕑 Historique"
-                        : "📂 Projet"}
+                  : view === "qr"
+                    ? "▦ Générateur de QR codes"
+                    : view === "about"
+                      ? "ℹ️ À propos"
+                      : view === "settings"
+                        ? "⚙️ Paramètres"
+                        : view === "history"
+                          ? "🕑 Historique"
+                          : "📂 Projet"}
             </h1>
             {(view === "studio" || view === "project") && (
               <div className="ml-auto flex items-center gap-2">
@@ -951,6 +954,12 @@ export default function App() {
           ) : view === "emojis" ? (
             <EmojiView
               tools={tools}
+              onReveal={revealOutput}
+              onToast={pushToast}
+            />
+          ) : view === "qr" ? (
+            <QrView
+              projectRoot={project?.root ?? null}
               onReveal={revealOutput}
               onToast={pushToast}
             />
@@ -1005,6 +1014,13 @@ export default function App() {
               unused={unused}
               tab={projectTab}
               onTab={setProjectTab}
+              qr={
+                <QrView
+                  projectRoot={project.root}
+                  onReveal={revealOutput}
+                  onToast={pushToast}
+                />
+              }
               studio={
                 <StudioView
                   staged={projectStaged}

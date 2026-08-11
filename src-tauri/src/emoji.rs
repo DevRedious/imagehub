@@ -39,6 +39,7 @@ pub struct SvgLibrary {
     pub truncated: bool,
 }
 
+/// Décrit un fichier écrit dans le dépôt. Sert aux emojis comme aux QR codes.
 #[derive(Serialize)]
 pub struct SavedEmoji {
     pub path: String,
@@ -46,7 +47,7 @@ pub struct SavedEmoji {
     pub bytes: u64,
 }
 
-fn saved(dest: PathBuf) -> SavedEmoji {
+pub(crate) fn saved(dest: PathBuf) -> SavedEmoji {
     let bytes = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
     SavedEmoji {
         path: dest.to_string_lossy().to_string(),
@@ -124,9 +125,8 @@ fn safe_name(name: &str) -> String {
     }
 }
 
-/// Chemin libre dans le dossier des emojis (suffixe -1, -2… si besoin).
-fn dest_path(name: &str, ext: &str) -> Result<PathBuf, String> {
-    let dir = emoji_root();
+/// Chemin libre dans un dossier du dépôt (suffixe -1, -2… si besoin).
+pub(crate) fn dest_path_in(dir: PathBuf, name: &str, ext: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&dir).map_err(|e| format!("Création du dossier impossible : {e}"))?;
     let stem = safe_name(name);
     let mut dest = dir.join(format!("{stem}.{ext}"));
@@ -136,6 +136,10 @@ fn dest_path(name: &str, ext: &str) -> Result<PathBuf, String> {
         i += 1;
     }
     Ok(dest)
+}
+
+fn dest_path(name: &str, ext: &str) -> Result<PathBuf, String> {
+    dest_path_in(emoji_root(), name, ext)
 }
 
 #[tauri::command]
@@ -157,7 +161,7 @@ fn normalize_hex(value: &str) -> Result<String, String> {
     }
 }
 
-fn decode_png(data: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_data_url(data: &str) -> Result<Vec<u8>, String> {
     // le webview envoie des data URL `data:image/png;base64,…`
     let payload = data.rsplit(',').next().unwrap_or(data);
     base64::engine::general_purpose::STANDARD
@@ -167,7 +171,7 @@ fn decode_png(data: &str) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub fn save_emoji_png(name: String, data: String) -> Result<SavedEmoji, String> {
-    let bytes = decode_png(&data)?;
+    let bytes = decode_data_url(&data)?;
     let dest = dest_path(&name, "png")?;
     std::fs::write(&dest, bytes).map_err(|e| format!("Écriture du PNG impossible : {e}"))?;
     Ok(saved(dest))
@@ -234,7 +238,7 @@ pub async fn save_emoji_animation(
 
         let write_frames = || -> Result<(), String> {
             for (i, frame) in frames.iter().enumerate() {
-                let bytes = decode_png(frame)?;
+                let bytes = decode_data_url(frame)?;
                 std::fs::write(tmp.join(format!("f-{:04}.png", i + 1)), bytes)
                     .map_err(|e| format!("Écriture d'une image impossible : {e}"))?;
             }

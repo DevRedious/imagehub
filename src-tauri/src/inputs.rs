@@ -57,7 +57,33 @@ fn is_image(path: &Path) -> bool {
     has_ext(path, INPUT_EXTS)
 }
 
-fn walk(dir: &Path, depth: u8, max_depth: u8, exts: &[&str], acc: &mut Vec<PathBuf>) {
+
+/// Fichiers d'un dossier portant l'une des extensions, en profondeur, triés
+/// (ordre stable d'un appel à l'autre — `read_dir` n'en garantit aucun), en
+/// écartant les dossiers cachés et les `SKIP_DIRS`.
+pub(crate) fn collect(dir: &Path, exts: &[&str], max_depth: u8) -> Vec<PathBuf> {
+    collect_where(dir, &|p| has_ext(p, exts), max_depth)
+}
+
+/// Même parcours, sur un critère libre : sert à chercher par NOM de fichier
+/// (`CNAME`, `.env.example`, `package.json`…) et pas seulement par extension.
+pub(crate) fn collect_where(
+    dir: &Path,
+    keep: &dyn Fn(&Path) -> bool,
+    max_depth: u8,
+) -> Vec<PathBuf> {
+    let mut acc = Vec::new();
+    walk_where(dir, 0, max_depth, keep, &mut acc);
+    acc
+}
+
+fn walk_where(
+    dir: &Path,
+    depth: u8,
+    max_depth: u8,
+    keep: &dyn Fn(&Path) -> bool,
+    acc: &mut Vec<PathBuf>,
+) {
     if depth > max_depth {
         return;
     }
@@ -73,7 +99,7 @@ fn walk(dir: &Path, depth: u8, max_depth: u8, exts: &[&str], acc: &mut Vec<PathB
             if !name.starts_with('.') && !SKIP_DIRS.contains(&name.as_str()) {
                 subdirs.push(path);
             }
-        } else if has_ext(&path, exts) {
+        } else if keep(&path) {
             here.push(path);
         }
     }
@@ -81,17 +107,8 @@ fn walk(dir: &Path, depth: u8, max_depth: u8, exts: &[&str], acc: &mut Vec<PathB
     subdirs.sort();
     acc.append(&mut here);
     for sub in subdirs {
-        walk(&sub, depth + 1, max_depth, exts, acc);
+        walk_where(&sub, depth + 1, max_depth, keep, acc);
     }
-}
-
-/// Fichiers d'un dossier portant l'une des extensions, en profondeur, triés
-/// (ordre stable d'un appel à l'autre — `read_dir` n'en garantit aucun), en
-/// écartant les dossiers cachés et les `SKIP_DIRS`.
-pub(crate) fn collect(dir: &Path, exts: &[&str], max_depth: u8) -> Vec<PathBuf> {
-    let mut acc = Vec::new();
-    walk(dir, 0, max_depth, exts, &mut acc);
-    acc
 }
 
 /// Développe une sélection utilisateur (fichiers et/ou dossiers) en liste

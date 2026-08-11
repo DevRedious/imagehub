@@ -15,6 +15,8 @@ import { QualityScore } from "./QualityScore";
 import { Thumb } from "./Thumb";
 import { UnusedSection } from "./UnusedSection";
 
+export type ProjectTab = "audit" | "studio" | "qr";
+
 interface Props {
   project: ProjectInfo;
   scan: ScanState;
@@ -32,10 +34,12 @@ interface Props {
   onRefresh: (() => void) | null;
   onPreview: (path: string) => void;
   /** onglet actif : Audit (analyse) ou Studio (traiter des images dans le projet) */
-  tab: "audit" | "studio";
-  onTab: (t: "audit" | "studio") => void;
+  tab: ProjectTab;
+  onTab: (t: ProjectTab) => void;
   /** Studio du projet, rendu dans l'onglet Studio (écrit dans le projet) */
   studio: ReactNode;
+  /** Générateur de QR, rendu dans l'onglet QR (URL et couleurs du projet) */
+  qr: ReactNode;
 }
 
 const HEAVY_PAGE = 30;
@@ -57,6 +61,7 @@ export function ProjectView({
   onPreview,
   tab,
   onTab,
+  qr,
   studio,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -111,9 +116,10 @@ export function ProjectView({
         </div>
       </header>
 
-      {/* onglets : Audit (analyse) vs Studio (traiter des images DANS le projet) */}
+      {/* Audit (analyse) · Studio (traiter des images DANS le projet) · QR
+          (code pointant vers le site du projet, à ses couleurs) */}
       <div className="flex w-fit gap-1 rounded-lg bg-panel p-0.5 text-xs">
-        {(["audit", "studio"] as const).map((t) => (
+        {(["audit", "studio", "qr"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -124,12 +130,14 @@ export function ProjectView({
                 : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            {t === "audit" ? "🔬 Audit" : "🎨 Studio"}
+            {t === "audit" ? "🔬 Audit" : t === "studio" ? "🎨 Studio" : "▦ QR"}
           </button>
         ))}
       </div>
 
-      {tab === "studio" ? (
+      {tab === "qr" ? (
+        qr
+      ) : tab === "studio" ? (
         studio
       ) : (
         <>

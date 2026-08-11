@@ -23,6 +23,44 @@ const PRESETS = [
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
+/** Une ligne « libellé + pastille + hexadécimal », pour régler une couleur
+ *  précise d'un visuel qui en compte plusieurs. */
+export function ColorField({
+  label,
+  color,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  color: string;
+  onChange: (c: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className={`flex items-center gap-2 ${disabled ? "opacity-40" : ""}`}>
+      <span className="w-24 shrink-0 text-xs text-zinc-500">{label}</span>
+      <input
+        type="color"
+        value={color}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-7 w-9 shrink-0 cursor-pointer rounded-md border border-zinc-700 bg-card p-0.5 disabled:cursor-not-allowed"
+      />
+      <input
+        type="text"
+        value={color}
+        spellCheck={false}
+        disabled={disabled}
+        onChange={(e) => {
+          const v = e.target.value.trim();
+          if (HEX.test(v)) onChange(v.toLowerCase());
+        }}
+        className="w-24 rounded-lg bg-card px-2 py-1.5 font-mono text-[11px] text-zinc-200 outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed"
+      />
+    </div>
+  );
+}
+
 export function ColorPicker({ color, onChange, recent }: Props) {
   const swatch = (value: string) => (
     <button
