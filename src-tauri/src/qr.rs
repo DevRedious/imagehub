@@ -571,4 +571,42 @@ mod tests {
             "le décodeur accepte un contraste que l'UI doit refuser de son côté"
         );
     }
+
+    /// Cas signalé par l'usage : fond noir, modules rouges.
+    ///
+    /// Le contraste est correct (5,25:1, au-dessus du plancher de 3:1) mais le
+    /// code est INVERSÉ — et aucune taille d'export n'y change quoi que ce
+    /// soit. Conseiller « augmente la taille » face à ce cas envoyait
+    /// l'utilisateur dans le mur : le message doit nommer la polarité.
+    #[test]
+    fn un_code_inverse_echoue_a_toute_taille() {
+        let m = qr_matrix("https://cluster.primal-ascension.fr/".into(), "H".into()).unwrap();
+        let quiet = 4u32;
+        // niveau de gris du rouge pur, tel que le voit un capteur
+        let gris_rouge = 54u8;
+        for scale in [4u32, 8, 16, 32] {
+            let side = (m.size as u32 + quiet * 2) * scale;
+            let mut img = image::GrayImage::from_pixel(side, side, image::Luma([0]));
+            for y in 0..m.size {
+                for x in 0..m.size {
+                    if !m.modules[y * m.size + x] {
+                        continue;
+                    }
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            img.put_pixel(
+                                (x as u32 + quiet) * scale + dx,
+                                (y as u32 + quiet) * scale + dy,
+                                image::Luma([gris_rouge]),
+                            );
+                        }
+                    }
+                }
+            }
+            assert!(
+                !read_back(img).readable,
+                "inversé à {side}px : agrandir ne corrige jamais une inversion"
+            );
+        }
+    }
 }

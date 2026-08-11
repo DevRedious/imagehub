@@ -79,7 +79,15 @@ jobs:
 
           Get-ChildItem -Recurse src-tauri/binaries | Select-Object FullName
 
-      - run: npm ci
+      # `@heroui-pro/react` arrive vide du registre : son `postinstall` va
+      # chercher le code sous licence, et refuse sans ce jeton. Sans lui,
+      # `npm ci` échoue ici et aucune release n'est produite.
+      # Le workflow ne se déclenche que sur tag ou lancement manuel — jamais
+      # sur une pull request — donc le secret reste hors de portée des forks.
+      - name: Dépendances (jeton HeroUI Pro requis)
+        run: npm ci
+        env:
+          HEROUI_AUTH_TOKEN: ${{ secrets.HEROUI_AUTH_TOKEN }}
 
       # Génère les notes depuis les commits du tag → corps de release + notes updater.
       - name: Notes de version

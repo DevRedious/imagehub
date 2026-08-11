@@ -1,3 +1,18 @@
+import {
+  ColorArea,
+  ColorSlider,
+  ColorSwatch,
+  ColorSwatchPicker,
+  ColorField as HeroColorField,
+  ColorPicker as HeroColorPicker,
+  Label,
+} from "@heroui/react";
+/* Import CIBLÉ, et non depuis la racine du paquet : le barrel de
+   `@heroui-pro/react` charge ses 70 composants, dont des cartes, des graphiques
+   et un éditeur de texte riche — soit une vingtaine de dépendances pair
+   (maplibre-gl, shiki, tiptap…) pour un seul sélecteur de couleur. */
+import { CellColorPicker } from "@heroui-pro/react/cell-color-picker";
+
 interface Props {
   color: string;
   onChange: (color: string) => void;
@@ -23,8 +38,106 @@ const PRESETS = [
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
-/** Une ligne « libellé + pastille + hexadécimal », pour régler une couleur
- *  précise d'un visuel qui en compte plusieurs. */
+/** Pastille cliquable ouvrant le sélecteur de HeroUI : aire
+ *  saturation/luminosité et curseur de teinte dans un popover.
+ *
+ *  Remplace le `<input type="color">` natif, qui déléguait à la boîte de
+ *  dialogue du système — dépendante du bureau, hors du thème de l'app, et sans
+ *  aperçu de la teinte pendant le réglage. */
+/** Contenu du popover, calqué sur la démo « cell-color-picker-with-presets »
+ *  de HeroUI Pro : préréglages, aire saturation/luminosité, curseur de teinte,
+ *  puis champ hexadécimal.
+ *
+ *  La démo n'utilise `@heroui-pro/react` que pour l'enveloppe `CellColorPicker`
+ *  (le déclencheur en cellule) ; tout ce qui suit vient du paquet gratuit. */
+function PickerBody({ onChange }: { onChange: (c: string) => void }) {
+  const hex = (c: { toString: (f: "hex") => string }) =>
+    onChange(c.toString("hex").toLowerCase());
+  return (
+    <>
+      {/* `ColorSwatchPicker` porte sa propre valeur : on le contrôle
+          explicitement plutôt que de compter sur un contexte hérité. */}
+      <ColorSwatchPicker
+        className="justify-center pt-2"
+        size="xs"
+        onChange={hex}
+      >
+        {PRESETS.map((preset) => (
+          <ColorSwatchPicker.Item key={preset} color={preset}>
+            <ColorSwatchPicker.Swatch />
+          </ColorSwatchPicker.Item>
+        ))}
+      </ColorSwatchPicker>
+
+      {/* pas de hauteur imposée : l'aire est déjà en `aspect-ratio: 1/1` */}
+      <ColorArea
+        aria-label="Aire de couleur"
+        className="max-w-full"
+        colorSpace="hsb"
+        xChannel="saturation"
+        yChannel="brightness"
+      >
+        <ColorArea.Thumb />
+      </ColorArea>
+
+      {/* le curseur se dispose en grille « label / valeur » : sans le Label,
+          la ligne perd sa moitié gauche */}
+      <ColorSlider
+        aria-label="Teinte"
+        channel="hue"
+        className="gap-1 px-1"
+        colorSpace="hsb"
+      >
+        <Label>Teinte</Label>
+        <ColorSlider.Output className="text-muted" />
+        <ColorSlider.Track>
+          <ColorSlider.Thumb />
+        </ColorSlider.Track>
+      </ColorSlider>
+
+      <HeroColorField aria-label="Valeur hexadécimale">
+        <HeroColorField.Group variant="secondary">
+          <HeroColorField.Prefix>
+            <ColorSwatch size="xs" />
+          </HeroColorField.Prefix>
+          <HeroColorField.Input />
+        </HeroColorField.Group>
+      </HeroColorField>
+    </>
+  );
+}
+
+/** Pastille seule ouvrant le sélecteur — pour les endroits sans libellé. */
+function Swatch({
+  color,
+  onChange,
+  className,
+}: {
+  color: string;
+  onChange: (c: string) => void;
+  className: string;
+}) {
+  return (
+    <HeroColorPicker
+      value={color}
+      // `onChange` livre un objet Color ; l'app ne manipule que de l'hexa
+      onChange={(c) => onChange(c.toString("hex").toLowerCase())}
+    >
+      <HeroColorPicker.Trigger
+        className={`shrink-0 cursor-pointer rounded-md border border-zinc-700 p-0.5 ${className}`}
+      >
+        <ColorSwatch className="h-full w-full rounded" />
+      </HeroColorPicker.Trigger>
+      <HeroColorPicker.Popover>
+        <PickerBody onChange={onChange} />
+      </HeroColorPicker.Popover>
+    </HeroColorPicker>
+  );
+}
+
+/** Cellule « libellé · valeur · pastille » — le `CellColorPicker` de HeroUI
+ *  Pro, qui fournit le déclencheur ; le contenu du popover reste composé de
+ *  briques du paquet gratuit. */
 export function ColorField({
   label,
   color,
@@ -37,27 +150,22 @@ export function ColorField({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-center gap-2 ${disabled ? "opacity-40" : ""}`}>
-      <span className="w-24 shrink-0 text-xs text-zinc-500">{label}</span>
-      <input
-        type="color"
-        value={color}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-9 shrink-0 cursor-pointer rounded-md border border-zinc-700 bg-card p-0.5 disabled:cursor-not-allowed"
-      />
-      <input
-        type="text"
-        value={color}
-        spellCheck={false}
-        disabled={disabled}
-        onChange={(e) => {
-          const v = e.target.value.trim();
-          if (HEX.test(v)) onChange(v.toLowerCase());
-        }}
-        className="w-24 rounded-lg bg-card px-2 py-1.5 font-mono text-[11px] text-zinc-200 outline-none focus:ring-1 focus:ring-accent disabled:cursor-not-allowed"
-      />
-    </div>
+    <CellColorPicker
+      aria-label={label}
+      value={color}
+      onChange={(c) => onChange(c.toString("hex").toLowerCase())}
+    >
+      {/* comme pour le ColorPicker de base, l'état désactivé va sur le
+          déclencheur (un bouton), pas sur la racine */}
+      <CellColorPicker.Trigger isDisabled={disabled}>
+        <CellColorPicker.Label>{label}</CellColorPicker.Label>
+        <CellColorPicker.ValueDisplay />
+        <CellColorPicker.Swatch />
+      </CellColorPicker.Trigger>
+      <CellColorPicker.Popover>
+        <PickerBody onChange={onChange} />
+      </CellColorPicker.Popover>
+    </CellColorPicker>
   );
 }
 
@@ -84,13 +192,7 @@ export function ColorPicker({ color, onChange, recent }: Props) {
       </h3>
 
       <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={color}
-          onChange={(e) => onChange(e.target.value)}
-          title="Choisir une couleur"
-          className="h-9 w-12 cursor-pointer rounded-lg border border-zinc-700 bg-card p-1"
-        />
+        <Swatch color={color} onChange={onChange} className="h-9 w-12" />
         <input
           type="text"
           value={color}

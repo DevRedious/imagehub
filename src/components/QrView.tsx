@@ -64,6 +64,8 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
   const [check, setCheck] = useState<QrCheck | null>(null);
   const [destination, setDestination] = useState("");
   const [busy, setBusy] = useState(false);
+  // raison précise d'un export refusé, pour proposer de passer outre
+  const [blocked, setBlocked] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -208,25 +210,36 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
     });
   }
 
-  async function exportPng() {
+  async function exportPng(force = false) {
     if (!matrix || busy) return;
     setBusy(true);
+    setBlocked(null);
     try {
       const out = document.createElement("canvas");
       drawQr(out, matrix, style, size);
       const data = out.toDataURL("image/png");
       const verdict = await verifyQr(data);
-      if (!verdict.readable) {
-        onToast(
-          "error",
-          "Le code ne se relit pas à cette taille — export annulé. Réduis le logo, passe en correction H ou augmente la taille.",
-        );
+      if (!verdict.readable && !force) {
+        // nommer la VRAIE cause : conseiller d'agrandir face à une inversion
+        // envoie dans le mur, la taille n'y change rien (test de non-régression
+        // `un_code_inverse_echoue_a_toute_taille`)
+        const reason = scan.inverted
+          ? "Code inversé : les modules sont plus clairs que le fond. La plupart des lecteurs Android échouent dessus (l'appareil photo d'iOS, lui, rattrape). Utilise « Remettre à l'endroit »."
+          : scan.ratio < 3
+            ? `Contraste insuffisant (${scan.ratio.toFixed(1)}:1, plancher 3:1) — éclaircis le fond ou fonce les modules.`
+            : logo
+              ? "Le logo masque trop de données — réduis-le ou retire-le."
+              : "Le code ne se relit pas — adoucis le style (modules carrés, couleur unie).";
+        setBlocked(reason);
+        onToast("error", reason);
         return;
       }
       const saved = await saveQrPng(nameFromUrl(url), data);
       onToast(
-        "success",
-        `${basename(saved.path)} — ${Math.round(saved.bytes / 1024)} Ko, relu et conforme`,
+        verdict.readable ? "success" : "info",
+        verdict.readable
+          ? `${basename(saved.path)} — ${Math.round(saved.bytes / 1024)} Ko, relu et conforme`
+          : `${basename(saved.path)} — écrit SANS vérification, teste-le avant diffusion`,
       );
       onReveal(saved.path);
     } catch (e) {
@@ -286,23 +299,29 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
                 décodeur accepte des écarts qu'un téléphone refuserait. */}
             <div className="flex flex-col items-center gap-1.5 text-xs">
               <span
+                // la couleur suit le SEUL contraste : la polarité est un
+                // problème distinct, annoncé sur sa propre ligne
                 className={
-                  scan.verdict === "bon"
+                  scan.ratio >= 7
                     ? "text-emerald-400"
-                    : scan.verdict === "limite"
+                    : scan.ratio >= 3
                       ? "text-amber-400"
                       : "text-red-400"
                 }
               >
                 contraste {scan.ratio.toFixed(1)}:1
-                {scan.verdict === "bon"
+                {scan.ratio >= 7
                   ? " — confortable"
-                  : scan.verdict === "limite"
+                  : scan.ratio >= 3
                     ? " — passe à l'écran, risqué à l'impression (viser 7:1)"
-                    : scan.inverted
-                      ? " — polarité inversée"
-                      : " — sous le plancher de 3:1"}
+                    : " — sous le plancher de 3:1"}
               </span>
+              {scan.inverted && (
+                <span className="text-red-400">
+                  polarité inversée — modules plus clairs que le fond, la taille
+                  n'y changera rien
+                </span>
+              )}
               {scan.inverted && (
                 <button
                   type="button"
@@ -633,7 +652,7 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
           </div>
           <button
             type="button"
-            onClick={exportPng}
+            onClick={() => exportPng()}
             disabled={!matrix || busy}
             className={`w-full rounded-lg px-3.5 py-2.5 text-sm font-medium transition-colors ${
               !matrix || busy
@@ -643,6 +662,15 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
           >
             {busy ? "Export…" : `Créer le PNG ${size}px`}
           </button>
+          {blocked && (
+            <button
+              type="button"
+              onClick={() => exportPng(true)}
+              className="w-full cursor-pointer rounded-lg bg-card px-3.5 py-2 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              Exporter quand même, sans vérification
+            </button>
+          )}
           <p className="text-[11px] leading-snug text-zinc-500">
             Le code est relu avant d'être écrit : s'il n'est pas déchiffrable,
             l'export est refusé plutôt que de te laisser imprimer un code mort.

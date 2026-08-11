@@ -16,6 +16,9 @@
     "ci:fix": "biome check --write --unsafe ."
   },
   "dependencies": {
+    "@heroui-pro/react": "^1.0.0-beta.8",
+    "@heroui/react": "^3.2.4",
+    "@heroui/styles": "^3.2.4",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
@@ -34,5 +37,8 @@
     "tailwindcss": "^4.3.0",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
+  },
+  "allowScripts": {
+    "@heroui-pro/react@1.0.0-beta.8": true
   }
 }

@@ -1,5 +1,9 @@
 <!doctype html>
-<html lang="fr">
+<!-- `dark` déclenche le thème sombre de HeroUI (il écoute `.dark` et
+     `[data-theme="dark"]`). ImageHub n'a pas de mode clair : la classe est
+     posée en dur plutôt que pilotée par une préférence. Elle n'affecte rien
+     d'autre — l'interface n'utilise aucune variante `dark:` de Tailwind. -->
+<html lang="fr" class="dark" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo-solo.svg" />

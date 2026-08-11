@@ -1,4 +1,12 @@
 @import "tailwindcss";
+/* HeroUI v3 — doit venir APRÈS tailwindcss pour que ses styles priment.
+   N'est utilisé que par le sélecteur de couleur (src/components/ColorPicker.tsx) ;
+   le reste de l'interface reste écrit à la main. */
+@import "@heroui/styles";
+/* HeroUI Pro : seulement la feuille du composant utilisé. Importer
+   `@heroui-pro/react/css` entier ajouterait les styles de 70 composants dont
+   aucun ne sert ici. */
+@import "@heroui-pro/react/css/components/cell-color-picker.css";
 
 @theme {
   --color-surface: #0e0e12;
