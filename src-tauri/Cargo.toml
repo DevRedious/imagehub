@@ -31,6 +31,12 @@ tauri-plugin-notification = "2.3.3"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 dirs = "6"
+# sémaphore équitable (FIFO) de la file de traitement — déjà dans l'arbre de
+# dépendances via Tauri, on ne fait que l'exposer.
+tokio = { version = "1", features = ["sync"] }
+# décodage des images rendues par le webview (data URL base64) — déjà dans
+# l'arbre de dépendances via Tauri.
+base64 = "0.22"
 
 # En dev, optimiser les dépendances (décodage d'images 10-50× plus rapide)
 # sans ralentir la recompilation de notre propre code.

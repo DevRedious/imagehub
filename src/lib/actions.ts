@@ -160,6 +160,26 @@ export const ACTIONS: ActionDef[] = [
   },
 ];
 
+/** Couloir de la file d'attente : les traitements lourds passent un par un,
+ *  les légers quelques-uns de front.
+ *
+ *  ⚠️ Miroir de `lane()` dans `src-tauri/src/queue.rs`, qui fait foi sur
+ *  l'exécution. Ici, ça ne sert qu'à afficher le bon rang d'attente. */
+export type Lane = "heavy" | "light";
+
+const HEAVY_ACTIONS: ActionId[] = [
+  "removeBg",
+  "bgToAvif",
+  "upscale",
+  "toAvif",
+  "optimizeAvif",
+  "pngToSvg",
+];
+
+export function actionLane(action: ActionId): Lane {
+  return HEAVY_ACTIONS.includes(action) ? "heavy" : "light";
+}
+
 /** Moteurs manquants pour une action (vide = action utilisable).
  *  Tant que le statut n'est pas chargé (null), rien n'est bloqué. */
 export function missingEngines(

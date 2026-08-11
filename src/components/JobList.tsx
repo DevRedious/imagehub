@@ -1,9 +1,11 @@
-import { type Job, PACK_ACTIONS } from "../types/job";
+import { type Job, PACK_ACTIONS, type QueuedJob } from "../types/job";
 import { Thumb } from "./Thumb";
 
 interface Props {
-  jobs: Job[];
+  jobs: QueuedJob[];
   onClear: () => void;
+  /** retire de la file des jobs pas encore démarrés (ids) */
+  onCancel: (ids: string[]) => void;
   onReveal: (path: string) => void;
   onPreview: (path: string) => void;
 }
@@ -13,6 +15,7 @@ const STATUS_STYLE: Record<Job["status"], string> = {
   running: "text-accent",
   done: "text-emerald-400",
   error: "text-red-400",
+  cancelled: "text-zinc-500",
 };
 
 const STATUS_LABEL: Record<Job["status"], string> = {
@@ -20,10 +23,21 @@ const STATUS_LABEL: Record<Job["status"], string> = {
   running: "en cours",
   done: "terminé",
   error: "erreur",
+  cancelled: "annulé",
 };
 
-export function JobList({ jobs, onClear, onReveal, onPreview }: Props) {
+export function JobList({
+  jobs,
+  onClear,
+  onCancel,
+  onReveal,
+  onPreview,
+}: Props) {
   if (jobs.length === 0) return null;
+
+  const waitingIds = jobs
+    .filter((j) => j.status === "pending")
+    .map((j) => j.id);
 
   return (
     <section className="space-y-2">
@@ -31,13 +45,25 @@ export function JobList({ jobs, onClear, onReveal, onPreview }: Props) {
         <h2 className="text-sm font-semibold text-zinc-400">
           File de traitement
         </h2>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
-        >
-          Vider les terminés
-        </button>
+        <div className="flex items-center gap-3">
+          {waitingIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onCancel(waitingIds)}
+              title="Retire de la file ce qui n'a pas encore démarré (le traitement en cours va à son terme)"
+              className="cursor-pointer text-xs text-zinc-500 hover:text-red-300"
+            >
+              ⏹ Annuler la file ({waitingIds.length})
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer"
+          >
+            Vider les terminés
+          </button>
+        </div>
       </div>
 
       {jobs.map((job) => {
@@ -61,10 +87,22 @@ export function JobList({ jobs, onClear, onReveal, onPreview }: Props) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-3">
                 <span className="truncate text-sm">{job.name}</span>
-                <span
-                  className={`shrink-0 text-xs ${STATUS_STYLE[job.status]}`}
-                >
-                  {STATUS_LABEL[job.status]}
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className={`text-xs ${STATUS_STYLE[job.status]}`}>
+                    {job.status === "pending" && job.queueRank
+                      ? `en file · n° ${job.queueRank}`
+                      : STATUS_LABEL[job.status]}
+                  </span>
+                  {job.status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => onCancel([job.id])}
+                      title="Annuler ce traitement"
+                      className="cursor-pointer rounded-full px-1.5 text-[11px] text-zinc-500 hover:bg-red-500/20 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </span>
               </div>
 

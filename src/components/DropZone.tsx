@@ -2,17 +2,19 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { IMAGE_EXTS } from "../lib/paths";
-import type { Job } from "../types/job";
+import type { QueuedJob } from "../types/job";
 import { CanvasTile } from "./CanvasTile";
 
 interface Props {
   staged: string[];
-  jobByPath: Map<string, Job>;
+  jobByPath: Map<string, QueuedJob>;
   onAddFiles: (paths: string[]) => void;
   onRemoveStaged: (path: string) => void;
   onPreview: (path: string) => void;
   onReveal: (path: string) => void;
   onClearStaged: () => void;
+  /** retire de la file des jobs pas encore démarrés (ids) */
+  onCancelJobs: (ids: string[]) => void;
 }
 
 /** Grande zone de dépôt : reçoit les images (drag-drop global ou clic) et
@@ -25,8 +27,19 @@ export function DropZone({
   onPreview,
   onReveal,
   onClearStaged,
+  onCancelJobs,
 }: Props) {
   const [hovering, setHovering] = useState(false);
+
+  // état de la file pour les images de CETTE zone (un job de pack apparié
+  // couvre deux chemins : on compte les jobs, pas les tuiles)
+  const zoneJobs = new Set(
+    staged.map((p) => jobByPath.get(p)).filter((j) => j !== undefined),
+  );
+  const running = [...zoneJobs].filter((j) => j.status === "running").length;
+  const waitingIds = [...zoneJobs]
+    .filter((j) => j.status === "pending")
+    .map((j) => j.id);
 
   useEffect(() => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
@@ -49,6 +62,13 @@ export function DropZone({
     if (picked) onAddFiles(Array.isArray(picked) ? picked : [picked]);
   }
 
+  /** Un dossier entier : c'est le backend qui le parcourt et n'en retient que
+   *  les images (`expand_inputs`), donc on lui passe le chemin tel quel. */
+  async function pickFolder() {
+    const dir = await open({ directory: true });
+    if (typeof dir === "string") onAddFiles([dir]);
+  }
+
   return (
     <div
       className={`flex h-full min-h-[60vh] flex-col rounded-2xl border-2 border-dashed transition-colors ${
@@ -56,14 +76,29 @@ export function DropZone({
       }`}
     >
       {staged.length === 0 ? (
-        <button
-          type="button"
-          onClick={pickFiles}
-          className="flex flex-1 cursor-pointer flex-col items-center justify-center gap-1 p-10 text-center"
-        >
-          <p className="text-lg font-medium">Glisse tes images ici</p>
-          <p className="text-sm text-zinc-500">ou clique pour parcourir</p>
-        </button>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+          <p className="text-lg font-medium">
+            Glisse tes images — ou un dossier — ici
+          </p>
+          <p className="text-sm text-zinc-500">ou choisis une source</p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={pickFiles}
+              className="cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
+            >
+              🖼 Des images
+            </button>
+            <button
+              type="button"
+              onClick={pickFolder}
+              title="Toutes les images du dossier (sous-dossiers compris)"
+              className="cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
+            >
+              📁 Un dossier
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           <div className="flex-1 overflow-y-auto p-3">
@@ -83,8 +118,26 @@ export function DropZone({
           <div className="flex items-center justify-between gap-3 border-t border-zinc-800/60 px-3 py-2.5">
             <span className="text-sm text-zinc-500">
               {staged.length} image{staged.length > 1 ? "s" : ""}
+              {running > 0 && (
+                <span className="ml-2 text-accent">↻ {running} en cours</span>
+              )}
+              {waitingIds.length > 0 && (
+                <span className="ml-2 text-zinc-400">
+                  ⏳ {waitingIds.length} en file
+                </span>
+              )}
             </span>
             <div className="flex items-center gap-2">
+              {waitingIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onCancelJobs(waitingIds)}
+                  title="Retire de la file ce qui n'a pas encore démarré (le traitement en cours va à son terme)"
+                  className="cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-300 transition-colors hover:bg-red-500/20 hover:text-red-300"
+                >
+                  ⏹ Annuler la file ({waitingIds.length})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClearStaged}
@@ -98,6 +151,14 @@ export function DropZone({
                 className="cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
               >
                 + Ajouter
+              </button>
+              <button
+                type="button"
+                onClick={pickFolder}
+                title="Toutes les images du dossier (sous-dossiers compris)"
+                className="cursor-pointer rounded-lg bg-card px-3.5 py-2 text-sm text-zinc-200 transition-colors hover:bg-accent-soft"
+              >
+                📁 Dossier
               </button>
             </div>
           </div>

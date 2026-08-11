@@ -68,6 +68,33 @@ body {
   animation: ih-shimmer 1.15s linear infinite;
 }
 
+/* --- Créateur d'emojis --- */
+
+/* un SVG de bibliothèque est inliné pour que son animation SMIL soit jouée :
+   ses width/height d'origine (souvent 24px) doivent céder à la taille de la
+   tuile qui l'accueille. */
+.ih-svg > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* damier : rend la transparence visible, sinon un emoji clair sur fond sombre
+   donne l'illusion d'un fond opaque. */
+.ih-checker {
+  background-image:
+    linear-gradient(45deg, #2a2a33 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a33 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a33 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a33 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
 /* révélation du résultat par balayage + léger flou « génération » */
 @keyframes ih-reveal {
   from {

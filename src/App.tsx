@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AboutView } from "./components/AboutView";
 import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
 import { ConfirmFilesModal } from "./components/ConfirmFilesModal";
+import { EmojiView } from "./components/EmojiView";
 import { HistoryView } from "./components/HistoryView";
 import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
@@ -22,18 +23,21 @@ import { UpdateModal } from "./components/UpdateModal";
 import {
   ACTIONS,
   actionAccepts,
+  actionLane,
   BG_MODELS,
   type BgModel,
+  type Lane,
   type QualityPreset,
   qualityValue,
   type ToolsStatus,
 } from "./lib/actions";
+import { expandInputs } from "./lib/inputs";
 import {
   loadOutputPrefs,
   type OutputPrefs,
   saveOutputPrefs,
 } from "./lib/output";
-import { basename, isSupportedImage, themeVariant } from "./lib/paths";
+import { basename, themeVariant } from "./lib/paths";
 import {
   type HeavyImage,
   type ImageUsages,
@@ -65,12 +69,18 @@ import {
   type Job,
   type JobProgressEvent,
   PACK_ACTIONS,
+  type QueuedJob,
 } from "./types/job";
 
 interface OptimizeRun {
   remaining: Set<string>;
   converted: { from: string; to: string }[];
 }
+
+/** Numéro de soumission des jobs : donne l'ordre de passage dans la file
+ *  (la liste affichée, elle, est empilée du plus récent au plus ancien). */
+let jobSeq = 0;
+const nextSeq = () => ++jobSeq;
 
 const SIDEBAR_KEY = "imagehub.sidebarCollapsed";
 const QUALITY_KEY = "imagehub.avifQuality";
@@ -439,18 +449,11 @@ export default function App() {
     };
   }, []);
 
-  // fin d'une optimisation AVIF groupée → prompt chirurgical de mise à jour des références
-  const onOptimizeJobEnd = useCallback(
-    (payload: JobProgressEvent, jobPath: string) => {
-      const run = optimizeRef.current;
-      if (!run) return;
-      if (!run.remaining.has(payload.job_id)) return;
-      run.remaining.delete(payload.job_id);
-      if (payload.status === "done" && payload.output) {
-        run.converted.push({ from: jobPath, to: payload.output });
-      }
-      if (run.remaining.size > 0) return;
-
+  // clôture d'une optimisation AVIF groupée (plus rien en attente : tout est
+  // terminé, en erreur ou annulé) → prompt chirurgical de mise à jour des
+  // références pour les fichiers réellement convertis.
+  const finishOptimizeRun = useCallback(
+    (run: OptimizeRun) => {
       optimizeRef.current = null;
       setOptimizing(false);
       const proj = projectRef.current;
@@ -483,6 +486,56 @@ export default function App() {
       analyze(proj.root).catch(() => {});
     },
     [analyze],
+  );
+
+  // un job d'optimisation se termine → on décompte, et on clôture au dernier
+  const onOptimizeJobEnd = useCallback(
+    (payload: JobProgressEvent, jobPath: string) => {
+      const run = optimizeRef.current;
+      if (!run) return;
+      if (!run.remaining.has(payload.job_id)) return;
+      run.remaining.delete(payload.job_id);
+      if (payload.status === "done" && payload.output) {
+        run.converted.push({ from: jobPath, to: payload.output });
+      }
+      if (run.remaining.size === 0) finishOptimizeRun(run);
+    },
+    [finishOptimizeRun],
+  );
+
+  /** Retire de la file des jobs qui n'ont pas encore démarré. L'interface
+   *  bascule tout de suite : le backend, lui, ne les écartera qu'au moment où
+   *  leur tour serait venu. Celui qui tourne déjà n'est jamais interrompu. */
+  const cancelJobs = useCallback(
+    (ids: string[]) => {
+      const wanted = new Set(ids);
+      const doomed = new Set(
+        jobsRef.current
+          .filter((j) => j.status === "pending" && wanted.has(j.id))
+          .map((j) => j.id),
+      );
+      if (doomed.size === 0) return;
+      invoke("cancel_jobs", { jobIds: [...doomed] }).catch(() => {});
+      setJobs((prev) =>
+        prev.map((j) =>
+          doomed.has(j.id) ? { ...j, status: "cancelled", progress: 0 } : j,
+        ),
+      );
+      // une optimisation groupée ne doit pas rester « en cours » indéfiniment
+      // à cause des jobs qu'on vient de retirer de sa liste d'attente
+      const run = optimizeRef.current;
+      if (run) {
+        for (const id of doomed) run.remaining.delete(id);
+        if (run.remaining.size === 0) finishOptimizeRun(run);
+      }
+      pushToast(
+        "info",
+        doomed.size === 1
+          ? "Traitement annulé"
+          : `${doomed.size} traitements annulés`,
+      );
+    },
+    [finishOptimizeRun, pushToast],
   );
 
   useEffect(() => {
@@ -529,17 +582,30 @@ export default function App() {
   }, [onOptimizeJobEnd, pushToast]);
 
   const addFilesTo = useCallback(
-    (setter: typeof setStaged, paths: string[]) => {
-      // écarte dossiers et fichiers non-image (silencieux jusqu'ici)
-      const ok = paths.filter(isSupportedImage);
-      const ignored = paths.length - ok.length;
-      if (ignored > 0) {
+    async (setter: typeof setStaged, paths: string[]) => {
+      if (paths.length === 0) return;
+      // les dossiers sont développés et les formats filtrés côté Rust : le
+      // webview ne lit pas le disque (voir src-tauri/src/inputs.rs)
+      const found = await expandInputs(paths).catch(() => null);
+      if (!found) {
+        pushToast("error", "Lecture de la sélection impossible");
+        return;
+      }
+      if (found.skipped > 0) {
         pushToast(
           "info",
-          `${ignored} fichier(s) ignoré(s) (format non pris en charge)`,
+          `${found.skipped} élément(s) ignoré(s) — format non pris en charge, ou dossier sans image`,
         );
       }
-      if (ok.length > 0) setter((prev) => [...new Set([...prev, ...ok])]);
+      if (found.truncated) {
+        pushToast(
+          "info",
+          `Sélection très large : seules les ${found.images.length} premières images ont été ajoutées`,
+        );
+      }
+      if (found.images.length > 0) {
+        setter((prev) => [...new Set([...prev, ...found.images])]);
+      }
     },
     [pushToast],
   );
@@ -604,8 +670,11 @@ export default function App() {
     if (!def) return;
     const typeOk = source.filter((p) => actionAccepts(def, p));
     // on ne (re)lance que les images « au repos » : celles déjà traitées ou en
-    // cours gardent leur tuile/résultat dans la zone.
-    const eligible = typeOk.filter((p) => !jobByPath.has(p));
+    // cours gardent leur tuile/résultat dans la zone. Une image annulée, elle,
+    // redevient relançable — c'est tout l'intérêt de pouvoir annuler.
+    const eligible = typeOk.filter(
+      (p) => jobByPath.get(p)?.status === "cancelled" || !jobByPath.has(p),
+    );
     if (eligible.length === 0) {
       if (typeOk.length > 0) {
         pushToast(
@@ -649,6 +718,7 @@ export default function App() {
       status: "pending",
       progress: 0,
       lightPath,
+      seq: nextSeq(),
     });
     let newJobs: Job[];
     // Packs + double thème actif : appaire les SVG nommés `<base>-dark` / `<base>-light`
@@ -677,6 +747,16 @@ export default function App() {
       newJobs = eligible.map((p) => single(p));
     }
     setJobs((prev) => [...newJobs, ...prev]);
+    // La file backend sérialise l'exécution : on le dit, sinon voir dix tuiles
+    // patienter ressemble à un blocage plutôt qu'à un traitement ordonné.
+    if (newJobs.length > 1) {
+      const cadence =
+        actionLane(action) === "heavy" ? "un par un" : "par petits lots";
+      pushToast(
+        "info",
+        `${newJobs.length} traitements mis en file — ils partiront ${cadence}`,
+      );
+    }
     // les images restent dans la zone : leurs tuiles s'animent selon le job
     for (const job of newJobs) launchJob(job, proj);
   }
@@ -685,17 +765,33 @@ export default function App() {
     (j) => j.status === "pending" || j.status === "running",
   ).length;
 
+  // rang dans la file d'attente, calculé à l'affichage : les jobs en attente
+  // démarreront dans leur ordre de soumission, couloir par couloir — même
+  // découpage que `lane()` côté Rust (src-tauri/src/queue.rs).
+  const queuedJobs = useMemo<QueuedJob[]>(() => {
+    const rank = new Map<string, number>();
+    const perLane = new Map<Lane, number>();
+    for (const j of [...jobs].sort((a, b) => a.seq - b.seq)) {
+      if (j.status !== "pending") continue;
+      const lane = actionLane(j.action);
+      const n = (perLane.get(lane) ?? 0) + 1;
+      perLane.set(lane, n);
+      rank.set(j.id, n);
+    }
+    return jobs.map((j) => ({ ...j, queueRank: rank.get(j.id) }));
+  }, [jobs]);
+
   // dernier job par chemin d'origine (jobs préfixés = plus récents en tête) :
   // pilote l'animation de chaque tuile du Studio.
   const jobByPath = useMemo(() => {
-    const m = new Map<string, Job>();
-    for (const j of jobs) {
+    const m = new Map<string, QueuedJob>();
+    for (const j of queuedJobs) {
       if (!m.has(j.path)) m.set(j.path, j);
       // un pack apparié pilote aussi la tuile de son SVG « light »
       if (j.lightPath && !m.has(j.lightPath)) m.set(j.lightPath, j);
     }
     return m;
-  }, [jobs]);
+  }, [queuedJobs]);
 
   /** révèle un fichier de sortie dans le gestionnaire de fichiers */
   function revealOutput(path: string) {
@@ -770,6 +866,7 @@ export default function App() {
       action: "optimizeAvif",
       status: "pending",
       progress: 0,
+      seq: nextSeq(),
     }));
     optimizeRef.current = {
       remaining: new Set(newJobs.map((j) => j.id)),
@@ -804,13 +901,15 @@ export default function App() {
             <h1 className="text-base font-semibold text-zinc-300">
               {view === "studio"
                 ? "🎨 Studio"
-                : view === "about"
-                  ? "ℹ️ À propos"
-                  : view === "settings"
-                    ? "⚙️ Paramètres"
-                    : view === "history"
-                      ? "🕑 Historique"
-                      : "📂 Projet"}
+                : view === "emojis"
+                  ? "😀 Créateur d'emojis"
+                  : view === "about"
+                    ? "ℹ️ À propos"
+                    : view === "settings"
+                      ? "⚙️ Paramètres"
+                      : view === "history"
+                        ? "🕑 Historique"
+                        : "📂 Projet"}
             </h1>
             {(view === "studio" || view === "project") && (
               <div className="ml-auto flex items-center gap-2">
@@ -837,12 +936,23 @@ export default function App() {
 
           {view === "history" ? (
             <HistoryView
-              jobs={jobs}
+              jobs={queuedJobs}
+              onCancel={cancelJobs}
               onClear={() =>
-                setJobs((prev) => prev.filter((j) => j.status !== "done"))
+                setJobs((prev) =>
+                  prev.filter(
+                    (j) => j.status !== "done" && j.status !== "cancelled",
+                  ),
+                )
               }
               onReveal={revealOutput}
               onPreview={setPreview}
+            />
+          ) : view === "emojis" ? (
+            <EmojiView
+              tools={tools}
+              onReveal={revealOutput}
+              onToast={pushToast}
             />
           ) : view === "about" ? (
             <AboutView onCheckForUpdates={checkUpdatesManually} />
@@ -869,6 +979,7 @@ export default function App() {
               onClearStaged={() => setStaged([])}
               onReveal={revealOutput}
               onRun={(a) => runAction(a, staged, null)}
+              onCancelJobs={cancelJobs}
               onPreview={setPreview}
               tools={tools}
               quality={quality}
@@ -905,6 +1016,7 @@ export default function App() {
                   onClearStaged={() => setProjectStaged([])}
                   onReveal={revealOutput}
                   onRun={(a) => runAction(a, projectStaged, project)}
+                  onCancelJobs={cancelJobs}
                   onPreview={setPreview}
                   tools={tools}
                   quality={quality}

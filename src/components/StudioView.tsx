@@ -8,18 +8,20 @@ import {
   type ToolsStatus,
 } from "../lib/actions";
 import { extOf } from "../lib/paths";
-import type { ActionId, Job } from "../types/job";
+import type { ActionId, QueuedJob } from "../types/job";
 import { ActionBar } from "./ActionBar";
 import { DropZone } from "./DropZone";
 
 interface Props {
   staged: string[];
-  jobByPath: Map<string, Job>;
+  jobByPath: Map<string, QueuedJob>;
   onAddFiles: (paths: string[]) => void;
   onRemoveStaged: (path: string) => void;
   onClearStaged: () => void;
   onReveal: (path: string) => void;
   onRun: (action: ActionId) => void;
+  /** retire de la file des jobs pas encore démarrés (ids) */
+  onCancelJobs: (ids: string[]) => void;
   onPreview: (path: string) => void;
   tools: ToolsStatus | null;
   quality: QualityPreset;
@@ -42,6 +44,7 @@ export function StudioView({
   onClearStaged,
   onReveal,
   onRun,
+  onCancelJobs,
   onPreview,
   tools,
   quality,
@@ -74,6 +77,7 @@ export function StudioView({
         onAddFiles={onAddFiles}
         onRemoveStaged={onRemoveStaged}
         onClearStaged={onClearStaged}
+        onCancelJobs={onCancelJobs}
         onReveal={onReveal}
         onPreview={onPreview}
       />

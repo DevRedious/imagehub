@@ -1,17 +1,25 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { basename } from "../lib/paths";
-import { type Job, PACK_ACTIONS } from "../types/job";
+import { PACK_ACTIONS, type QueuedJob } from "../types/job";
 
 interface Props {
   path: string;
-  job?: Job;
+  job?: QueuedJob;
   onRemove: (path: string) => void;
   onPreview: (path: string) => void;
   onReveal: (path: string) => void;
 }
 
-type Phase = "idle" | "scan" | "process" | "reveal" | "result" | "error";
+type Phase =
+  | "idle"
+  | "queued"
+  | "cancelled"
+  | "scan"
+  | "process"
+  | "reveal"
+  | "result"
+  | "error";
 
 const SCAN_MS = 1100;
 const REVEAL_MS = 700;
@@ -33,23 +41,34 @@ export function CanvasTile({
 
   const jobId = job?.id;
   const jobStatus = job?.status;
+  const abandoned = jobStatus === "cancelled";
+  // un job existe mais attend son tour dans la file backend : rien ne tourne
+  // encore pour cette image, donc pas d'animation de génération.
+  const started = jobId !== undefined && jobStatus !== "pending" && !abandoned;
 
-  // démarrage : un job apparaît → scan puis traitement (dépend de l'identité
-  // du job seulement, pas du statut, pour ne pas relancer l'animation).
+  // Cycle de vie de la tuile : au repos → en file → scan → traitement (ou
+  // retour au repos si le job est annulé avant d'avoir démarré). Dépend du
+  // démarrage effectif et non du statut détaillé : le passage running →
+  // done/error ne relance pas l'animation.
   useEffect(() => {
-    if (jobId === undefined) {
-      setPhase("idle");
+    if (jobId === undefined || abandoned) {
       startRef.current = null;
+      setPhase(abandoned ? "cancelled" : "idle");
       return;
     }
-    if (startRef.current === null) startRef.current = performance.now();
+    if (!started) {
+      startRef.current = null;
+      setPhase("queued");
+      return;
+    }
+    startRef.current = performance.now();
     setPhase("scan");
     const t = setTimeout(
       () => setPhase((p) => (p === "scan" ? "process" : p)),
       SCAN_MS,
     );
     return () => clearTimeout(t);
-  }, [jobId]);
+  }, [jobId, started, abandoned]);
 
   // fin du job → révélation (après la durée mini) ou erreur
   useEffect(() => {
@@ -71,8 +90,12 @@ export function CanvasTile({
 
   const original = convertFileSrc(path);
 
-  // --- Au repos : petit carré ---
-  if (phase === "idle") {
+  // --- Au repos, en file d'attente, ou annulé : petit carré ---
+  // La tuile ne s'agrandit qu'au démarrage réel du traitement : une file de
+  // douze images reste lisible, et c'est celle qui travaille qui se distingue.
+  if (phase === "idle" || phase === "queued" || phase === "cancelled") {
+    const queued = phase === "queued";
+    const rank = job?.queueRank;
     return (
       <div className="group relative aspect-square overflow-hidden rounded-xl border border-zinc-800 bg-card">
         <button
@@ -86,17 +109,32 @@ export function CanvasTile({
             alt=""
             loading="lazy"
             decoding="async"
-            className="h-full w-full object-contain"
+            className={`h-full w-full object-contain ${queued ? "opacity-40" : ""}`}
           />
         </button>
-        <button
-          type="button"
-          onClick={() => onRemove(path)}
-          title="Retirer"
-          className="absolute top-1 right-1 hidden h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-zinc-900/80 text-[10px] text-zinc-200 hover:bg-red-500 group-hover:flex"
-        >
-          ✕
-        </button>
+        {queued && (
+          <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-zinc-300">
+            <span className="text-lg">⏳</span>
+            <span className="text-[10px] font-medium tabular-nums">
+              {rank ? `${rank}${rank === 1 ? "er" : "e"} en file` : "en file"}
+            </span>
+          </span>
+        )}
+        {phase === "cancelled" && (
+          <span className="pointer-events-none absolute top-1 left-1 rounded-full bg-zinc-900/80 px-1.5 text-[10px] text-zinc-400">
+            annulé
+          </span>
+        )}
+        {!queued && (
+          <button
+            type="button"
+            onClick={() => onRemove(path)}
+            title="Retirer"
+            className="absolute top-1 right-1 hidden h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-zinc-900/80 text-[10px] text-zinc-200 hover:bg-red-500 group-hover:flex"
+          >
+            ✕
+          </button>
+        )}
         <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-surface/80 to-transparent px-1.5 pb-1 pt-3 text-center text-[10px] text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100">
           {basename(path)}
         </span>

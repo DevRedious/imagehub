@@ -386,6 +386,16 @@ pub async fn run_action(
     dual_theme: Option<bool>,
     light_input: Option<String>,
 ) -> Result<(), String> {
+    // File d'attente : on ne démarre l'outil externe qu'à notre tour (voir
+    // queue.rs). Tant que le permis n'est pas obtenu, aucun `running` n'est
+    // émis — le job reste « en attente » dans l'interface. Le permis vit
+    // jusqu'à la fin de la fonction, donc jusqu'après le worker.
+    let _permit = crate::queue::acquire(&action).await;
+    // Annulé pendant l'attente → on rend la main sans lancer le moindre outil.
+    if crate::queue::take_cancelled(&job_id) {
+        emit(&app, &job_id, "cancelled", 0, None, None);
+        return Ok(());
+    }
     emit(&app, &job_id, "running", 15, None, None);
 
     let app2 = app.clone();
@@ -445,5 +455,8 @@ pub async fn run_action(
         Ok(dest) => emit(&app, &job_id, "done", 100, Some(dest), None),
         Err(e) => emit(&app, &job_id, "error", 100, None, Some(e)),
     }
+    // annulation arrivée trop tard (le job avait déjà démarré) : on purge la
+    // marque devenue sans objet plutôt que de la laisser traîner.
+    crate::queue::take_cancelled(&job_id);
     Ok(())
 }

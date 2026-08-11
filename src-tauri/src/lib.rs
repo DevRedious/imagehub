@@ -1,7 +1,10 @@
 mod actions;
+mod emoji;
 mod icon_packs;
 mod icon_prompts;
+mod inputs;
 mod project;
+mod queue;
 mod thumbs;
 mod tools;
 mod watcher;
@@ -27,6 +30,13 @@ pub fn run() {
             project::analyze_project,
             project::scan_image_usages,
             project::delete_files,
+            inputs::expand_inputs,
+            emoji::emoji_dir,
+            emoji::list_svgs,
+            emoji::save_emoji_svg,
+            emoji::save_emoji_png,
+            emoji::save_emoji_animation,
+            queue::cancel_jobs,
             thumbs::make_thumb,
             tools::check_tools,
             tools::platform_info,

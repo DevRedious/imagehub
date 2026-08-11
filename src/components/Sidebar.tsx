@@ -3,7 +3,13 @@ import { stackIcon } from "../lib/icons";
 import { KIND_LABEL } from "../lib/project";
 import type { SavedProject } from "../lib/projectsStore";
 
-export type View = "studio" | "project" | "about" | "history" | "settings";
+export type View =
+  | "studio"
+  | "emojis"
+  | "project"
+  | "about"
+  | "history"
+  | "settings";
 
 /** icône « info » pour la page à propos */
 function InfoIcon({ size = 16 }: { size?: number }) {
@@ -196,6 +202,18 @@ export function Sidebar({
       >
         <span className="text-base">🎨</span>
         {!collapsed && "Studio"}
+      </button>
+
+      <button
+        type="button"
+        className={
+          collapsed ? railBtn(view === "emojis") : navBtn(view === "emojis")
+        }
+        onClick={() => onView("emojis")}
+        title={collapsed ? "Emojis" : undefined}
+      >
+        <span className="text-base">😀</span>
+        {!collapsed && "Emojis"}
       </button>
 
       <button

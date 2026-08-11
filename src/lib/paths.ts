@@ -10,7 +10,9 @@ export function extOf(path: string): string {
   return i > 0 ? name.slice(i + 1).toLowerCase() : "";
 }
 
-/** Formats image pris en charge par l'app (dépôt, sélection, vignettes). */
+/** Formats image pris en charge par l'app : filtre du sélecteur de fichiers.
+ *  ⚠️ Miroir de `INPUT_EXTS` dans src-tauri/src/inputs.rs, qui fait foi sur ce
+ *  qui est réellement accepté (y compris pour un dossier déposé). */
 export const IMAGE_EXTS = [
   "png",
   "jpg",
@@ -23,11 +25,6 @@ export const IMAGE_EXTS = [
   "tiff",
   "ico",
 ];
-
-/** Vrai si le chemin pointe vers un format image pris en charge. */
-export function isSupportedImage(path: string): boolean {
-  return IMAGE_EXTS.includes(extOf(path));
-}
 
 /** Variante de thème portée par le nom de fichier (convention `<base>-dark` /
  *  `<base>-light`), ou `null` sinon. `base` est en minuscules → sert de clé
