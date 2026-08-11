@@ -152,13 +152,32 @@ export function saveQrPng(name: string, data: string): Promise<SavedFile> {
   return invoke<SavedFile>("save_qr_png", { name, data });
 }
 
+/** Polices déjà chargées, par chemin. On garde la promesse et non le résultat :
+ *  une grille d'aperçus demande la même police plusieurs fois avant que le
+ *  premier chargement soit fini, et deux `FontFace` pour un même fichier
+ *  coûteraient deux fois la mémoire. */
+const loadedFonts = new Map<string, Promise<string>>();
+
 /** Charge un fichier de police dans le webview et renvoie le nom de famille à
  *  utiliser côté canvas. On passe par les octets plutôt qu'une URL : pas de
  *  question d'origine, et aucune installation système nécessaire. */
-export async function loadFontFile(file: FontFile): Promise<string> {
+export function loadFontFile(file: FontFile): Promise<string> {
+  const cached = loadedFonts.get(file.path);
+  if (cached) return cached;
+  const pending = registerFont(file, loadedFonts.size);
+  loadedFonts.set(file.path, pending);
+  // un échec ne doit pas rester en cache, sinon la police n'est plus jamais
+  // réessayée de la session
+  pending.catch(() => loadedFonts.delete(file.path));
+  return pending;
+}
+
+async function registerFont(file: FontFile, seq: number): Promise<string> {
   const b64 = await readFont(file.path);
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  const family = `ih-font-${file.name.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  // le numéro d'ordre départage deux fichiers de même nom venus de dossiers
+  // différents : sans lui, la seconde famille masquerait la première
+  const family = `ih-font-${seq}-${file.name.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const face = new FontFace(family, bytes.buffer as ArrayBuffer);
   await face.load();
   document.fonts.add(face);
@@ -258,6 +277,69 @@ export function saveQrUrl(projectRoot: string | null, url: string): void {
   const key = `${URL_KEY}.${projectRoot ?? "_libre"}`;
   if (url.trim() === "") localStorage.removeItem(key);
   else localStorage.setItem(key, url.trim());
+}
+
+const FONT_DIR_KEY = "imagehub.fontDir";
+
+/** Bibliothèque de polices : un dossier choisi une fois, retenu ensuite —
+ *  même convention que la bibliothèque de SVG du créateur d'emojis. Aucune
+ *  police n'a besoin d'être installée sur le système : le fichier est lu tel
+ *  quel et le PNG exporté embarque les glyphes en pixels. */
+export function loadFontDir(): string | null {
+  return localStorage.getItem(FONT_DIR_KEY);
+}
+
+export function saveFontDir(dir: string | null): void {
+  if (dir) localStorage.setItem(FONT_DIR_KEY, dir);
+  else localStorage.removeItem(FONT_DIR_KEY);
+}
+
+export interface FontGroup {
+  family: string;
+  fonts: FontFile[];
+}
+
+/** Famille d'un fichier de police : le préfixe avant le premier tiret, la
+ *  convention des fonderies (`Merriweather_24pt-BoldItalic`). */
+export function fontFamilyOf(name: string): string {
+  const cut = name.indexOf("-");
+  return cut > 0 ? name.slice(0, cut) : name;
+}
+
+/** Ce qui distingue un fichier dans sa famille (`BoldItalic`), pour ne pas
+ *  répéter le nom de la famille sur chacune de ses quatorze graisses. */
+export function fontVariantOf(name: string): string {
+  const cut = name.indexOf("-");
+  return cut > 0 ? name.slice(cut + 1) : "Regular";
+}
+
+/** Regroupe une bibliothèque par famille. Une bibliothèque réelle aligne des
+ *  dizaines de graisses d'une même police : à plat, la liste est inutilisable.
+ *  Les familles à fichier unique finissent ensemble plutôt que de produire
+ *  autant de groupes d'une seule ligne. */
+export function groupFonts(fonts: FontFile[]): FontGroup[] {
+  const byFamily = new Map<string, FontFile[]>();
+  for (const font of fonts) {
+    const family = fontFamilyOf(font.name);
+    const list = byFamily.get(family);
+    if (list) list.push(font);
+    else byFamily.set(family, [font]);
+  }
+
+  const groups: FontGroup[] = [];
+  const alone: FontFile[] = [];
+  for (const [family, list] of byFamily) {
+    if (list.length > 1) groups.push({ family, fonts: list });
+    else alone.push(list[0]);
+  }
+  groups.sort((a, b) => a.family.localeCompare(b.family));
+  if (alone.length > 0) {
+    groups.push({
+      family: "Autres",
+      fonts: alone.sort((a, b) => a.name.localeCompare(b.name)),
+    });
+  }
+  return groups;
 }
 
 /** Rapport de contraste WCAG entre deux couleurs (1 = identiques, 21 = max). */

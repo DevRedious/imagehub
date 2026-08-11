@@ -283,13 +283,21 @@ function drawCaption(
   box: Layout,
 ): void {
   const { caption, fontFamily, colors } = style;
-  const maxWidth = box.size * TPL.captionW;
   const text = caption.trim();
 
   // la légende vit dans la bande SOUS le panneau : sa position se déduit du
   // bas du panneau, jamais d'une constante — sans quoi elle finit sur le code
   const band = box.height - box.panelBottom;
   const maxHeight = band * 0.62;
+
+  // la queue de la flèche descend dans cette même bande : le texte commence
+  // après elle, avec un écart franc. Le retrait du gabarit (`captionX`) ne
+  // vaut que sans flèche — il y suppose la bande gauche libre.
+  const startX = style.arrow
+    ? Math.max(box.size * TPL.captionX, arrowTailX(box) + box.size * 0.04)
+    : box.size * TPL.captionX;
+  // la marge droite, elle, reste celle du gabarit : c'est la largeur qui cède
+  const maxWidth = box.size * (TPL.captionX + TPL.captionW) - startX;
 
   let fontSize = Math.min(box.size * 0.15, maxHeight);
   for (let i = 0; i < 12; i++) {
@@ -300,7 +308,7 @@ function drawCaption(
   }
 
   ctx.save();
-  ctx.translate(box.size * TPL.captionX, box.panelBottom + band * 0.52);
+  ctx.translate(startX, box.panelBottom + band * 0.52);
   ctx.rotate(TPL.captionAngle);
   ctx.fillStyle = colors.frame;
   ctx.textAlign = "left";
@@ -308,6 +316,14 @@ function drawCaption(
   ctx.font = `${fontSize}px "${fontFamily}", cursive`;
   ctx.fillText(text, 0, 0);
   ctx.restore();
+}
+
+/** Abscisse de la queue de la flèche — son point le plus à droite, et le seul
+ *  qui descende au niveau de la légende. Partagée avec `drawCaption` : deux
+ *  constantes séparées finiraient par diverger, et le texte repasserait sous
+ *  la flèche. */
+function arrowTailX(box: Layout): number {
+  return Math.min(box.panelX * 0.92, box.size * 0.17);
 }
 
 /** Flèche courbe dans la bande gauche, pointant vers le code.
@@ -326,7 +342,7 @@ function drawArrow(
   const s = box.size;
   // La flèche tient dans la bande gauche : le panneau commence à `panelX`, on
   // s'arrête avant. Elle part du niveau de la légende et remonte vers le code.
-  const right = Math.min(box.panelX * 0.92, s * 0.17);
+  const right = arrowTailX(box);
   const p0 = {
     x: right,
     y: box.panelBottom + (box.height - box.panelBottom) * 0.42,

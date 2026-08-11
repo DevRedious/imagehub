@@ -10,6 +10,7 @@ import {
   type FontFile,
   findFonts,
   invertPolarity,
+  loadFontDir,
   loadFontFile,
   loadQrUrl,
   MODULE_SHAPES,
@@ -23,6 +24,7 @@ import {
   qrDir,
   qrMatrix,
   readImageDataUrl,
+  saveFontDir,
   saveQrPng,
   saveQrUrl,
   type ThemeColor,
@@ -30,6 +32,7 @@ import {
 } from "../lib/qr";
 import { drawQr, loadImage, type QrStyle } from "../lib/qrRender";
 import { ColorField } from "./ColorPicker";
+import { FontPicker } from "./FontPicker";
 
 interface Props {
   /** racine du projet connecté, pour y détecter URL et polices (null = aucun) */
@@ -53,9 +56,17 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
   const [shape, setShape] = useState<ModuleShape>("round");
   const [caption, setCaption] = useState("Scanne moi !");
   const [arrow, setArrow] = useState(true);
+  // trois provenances pour la légende : les polices posées dans le projet
+  // connecté, la bibliothèque personnelle (un dossier retenu d'une session à
+  // l'autre) et les fichiers ouverts à l'unité
   const [fonts, setFonts] = useState<FontFile[]>([]);
+  const [fontDir, setFontDir] = useState<string | null>(loadFontDir);
+  const [libFonts, setLibFonts] = useState<FontFile[]>([]);
+  const [pickedFonts, setPickedFonts] = useState<FontFile[]>([]);
   const [fontFamily, setFontFamily] = useState("cursive");
-  const [fontLabel, setFontLabel] = useState("Par défaut");
+  // chemin de la police courante ; vide = police par défaut du rendu
+  const [fontPath, setFontPath] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [logoPath, setLogoPath] = useState<string | null>(null);
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   const [ecc, setEcc] = useState<Ecc>("H");
@@ -97,6 +108,18 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
       })
       .catch(() => setTheme([]));
   }, [projectRoot]);
+
+  // la bibliothèque ne dépend pas du projet ouvert : elle est relue quand son
+  // dossier change, pas à chaque changement de contexte
+  useEffect(() => {
+    if (!fontDir) {
+      setLibFonts([]);
+      return;
+    }
+    findFonts(fontDir)
+      .then(setLibFonts)
+      .catch(() => setLibFonts([]));
+  }, [fontDir]);
 
   // un logo masque le centre : seule la correction H tient le coup
   useEffect(() => {
@@ -190,7 +213,7 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
     async (file: FontFile) => {
       try {
         setFontFamily(await loadFontFile(file));
-        setFontLabel(file.name);
+        setFontPath(file.path);
       } catch (e) {
         onToast("error", `Police illisible : ${e}`);
       }
@@ -198,16 +221,51 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
     [onToast],
   );
 
+  const currentFont = useMemo(
+    () =>
+      [...pickedFonts, ...fonts, ...libFonts].find((f) => f.path === fontPath),
+    [pickedFonts, fonts, libFonts, fontPath],
+  );
+
+  const chooseFont = useCallback(
+    (file: FontFile | null) => {
+      setPickerOpen(false);
+      if (!file) {
+        setFontFamily("cursive");
+        setFontPath("");
+        return;
+      }
+      void applyFont(file);
+    },
+    [applyFont],
+  );
+
+  /** Fichier isolé, hors bibliothèque : il rejoint la liste pour rester
+   *  atteignable sans repasser par la boîte de dialogue. */
   async function pickFont() {
     const picked = await open({
       multiple: false,
-      filters: [{ name: "Police", extensions: ["ttf", "otf", "woff2"] }],
+      filters: [
+        { name: "Police", extensions: ["ttf", "otf", "woff", "woff2"] },
+      ],
     });
     if (typeof picked !== "string") return;
-    await applyFont({
+    const file = {
       path: picked,
       name: basename(picked).replace(/\.[^.]+$/, ""),
-    });
+    };
+    setPickedFonts((prev) =>
+      prev.some((f) => f.path === file.path) ? prev : [...prev, file],
+    );
+    await applyFont(file);
+    setPickerOpen(false);
+  }
+
+  async function pickFontDir() {
+    const picked = await open({ directory: true });
+    if (typeof picked !== "string") return;
+    setFontDir(picked);
+    saveFontDir(picked);
   }
 
   async function exportPng(force = false) {
@@ -557,36 +615,20 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
             onChange={(e) => setCaption(e.target.value)}
             className="w-full rounded-lg bg-card px-2.5 py-2 text-sm text-zinc-200 outline-none focus:ring-1 focus:ring-accent"
           />
-          <div className="flex items-center gap-2">
-            <span className="w-20 shrink-0 text-xs text-zinc-500">Police</span>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="w-20 shrink-0 text-zinc-500">Police</span>
             <button
               type="button"
-              onClick={pickFont}
-              className="flex-1 truncate rounded-lg bg-card px-2.5 py-1.5 text-left text-xs text-zinc-300 transition-colors hover:bg-accent-soft"
+              onClick={() => setPickerOpen(true)}
+              className="min-w-0 flex-1 truncate rounded-lg bg-card px-2.5 py-1.5 text-left text-zinc-300 transition-colors hover:bg-accent-soft"
             >
-              {fontLabel}
+              {/* le nom est écrit avec la police elle-même : le panneau dit
+                  déjà de quoi il s'agit sans ouvrir la fenêtre */}
+              <span style={{ fontFamily }}>
+                {currentFont?.name ?? "Par défaut"}
+              </span>
             </button>
           </div>
-          {fonts.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[11px] text-zinc-500">
-                Trouvées dans le projet
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {fonts.slice(0, 8).map((f) => (
-                  <button
-                    key={f.path}
-                    type="button"
-                    onClick={() => applyFont(f)}
-                    title={f.path}
-                    className="cursor-pointer rounded-md bg-card px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-200"
-                  >
-                    {f.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
@@ -677,6 +719,21 @@ export function QrView({ projectRoot, onReveal, onToast }: Props) {
           </p>
         </div>
       </div>
+
+      {pickerOpen && (
+        <FontPicker
+          library={libFonts}
+          project={fonts}
+          picked={pickedFonts}
+          dir={fontDir}
+          value={fontPath}
+          caption={caption}
+          onChoose={chooseFont}
+          onPickDir={pickFontDir}
+          onPickFile={pickFont}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

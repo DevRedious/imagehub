@@ -368,15 +368,18 @@ pub fn read_image_data_url(path: String) -> Result<String, String> {
     Ok(format!("data:{mime};base64,{b64}"))
 }
 
-/// Polices trouvées à côté d'un dossier de travail (ex. le `.otf` posé dans le
-/// projet), pour les proposer sans que l'utilisateur ait à les chercher.
+/// Polices trouvées sous un dossier : celles posées dans le projet connecté,
+/// et celles de la bibliothèque personnelle choisie une fois pour toutes.
+///
+/// Les extensions sont celles que `read_font` sait charger — lister un format
+/// qu'il refuserait ensuite ne ferait qu'offrir un choix mort.
 #[tauri::command]
 pub fn find_fonts(root: String) -> Result<Vec<FontFile>, String> {
     let root = Path::new(&root);
     if !root.is_dir() {
         return Ok(Vec::new());
     }
-    Ok(crate::inputs::collect(root, &["ttf", "otf", "woff2"], 3)
+    Ok(crate::inputs::collect(root, &["ttf", "otf", "woff", "woff2"], 3)
         .into_iter()
         .take(200)
         .map(|p| FontFile {
