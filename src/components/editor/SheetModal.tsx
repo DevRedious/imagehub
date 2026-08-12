@@ -52,6 +52,18 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
    *  aurait parlé — et rembg n'est PAS livré avec l'application. */
   const [failed, setFailed] = useState<string | null>(null);
 
+  /** Le rapporteur d'erreur vit dans une référence, et n'entre JAMAIS dans les
+   *  dépendances d'un effet.
+   *
+   *  Une fonction passée en propriété est recréée à chaque rendu du parent :
+   *  la mettre en dépendance revient à relancer l'effet à chaque rendu de
+   *  l'application. Le détourage repartait donc en boucle — instantanément,
+   *  puisqu'il retombe sur son cache — et chaque passage nourrissait le rendu
+   *  suivant. Un emballement qui tenait un cœur à douze pour cent et noyait
+   *  l'écran de notifications, sans jamais s'arrêter. */
+  const report = useRef(onError);
+  report.current = onError;
+
   // détourage : relancé seulement quand ses propres paramètres changent
   useEffect(() => {
     let alive = true;
@@ -65,7 +77,7 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
       .catch((e) => {
         if (!alive) return;
         setFailed(String(e));
-        onError(String(e));
+        report.current(String(e));
       })
       .finally(() => {
         if (alive) setDetouring(false);
@@ -73,7 +85,7 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
     return () => {
       alive = false;
     };
-  }, [path, model, aggressiveness, onError]);
+  }, [path, model, aggressiveness]);
 
   // découpe : rejouée à chaque cran de curseur, sur le détourage déjà calculé
   const timer = useRef<number | null>(null);
@@ -88,13 +100,13 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
           setDropped(new Set());
           setSettled(true);
         })
-        .catch((e) => onError(String(e)))
+        .catch((e) => report.current(String(e)))
         .finally(() => setSlicing(false));
     }, 120);
     return () => {
       if (timer.current) window.clearTimeout(timer.current);
     };
-  }, [cutout, gap, minSize, onError]);
+  }, [cutout, gap, minSize]);
 
   const keep = pieces.filter((p) => !dropped.has(p.index));
 

@@ -44,6 +44,14 @@ export function ExportModal({
   const [index, setIndex] = useState(0);
   const shots = useRef<{ suffix: string; data: string }[]>([]);
   const stageRef = useRef<Konva.Stage | null>(null);
+  /** Mêmes précautions que dans la modale de découpe : une fonction reçue en
+   *  propriété change d'identité à chaque rendu du parent, et la mettre en
+   *  dépendance relancerait la capture en cours — ajoutant le même format
+   *  plusieurs fois au lot à écrire. */
+  const done = useRef(onDone);
+  const report = useRef(onError);
+  done.current = onDone;
+  report.current = onError;
 
   const current = queue[index] ?? null;
 
@@ -81,7 +89,7 @@ export function ExportModal({
           data: stage.toDataURL({ pixelRatio: 1 }),
         });
       } catch (e) {
-        onError(`Rendu du format ${current.label} impossible : ${e}`);
+        report.current(`Rendu du format ${current.label} impossible : ${e}`);
         setRunning(false);
         setQueue([]);
         return;
@@ -97,9 +105,9 @@ export function ExportModal({
           shots: shots.current,
           dir,
         });
-        onDone(written);
+        done.current(written);
       } catch (e) {
-        onError(String(e));
+        report.current(String(e));
       } finally {
         setRunning(false);
         setQueue([]);
@@ -108,7 +116,7 @@ export function ExportModal({
     return () => {
       alive = false;
     };
-  }, [running, current, index, queue.length, name, dir, onDone, onError]);
+  }, [running, current, index, queue.length, name, dir]);
 
   const toggle = (id: string) =>
     setPicked((prev) =>

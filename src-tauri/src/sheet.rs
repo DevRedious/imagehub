@@ -25,7 +25,6 @@
 //!    pixels — les pièces sortent avec leurs contours d'origine.
 
 use image::RgbaImage;
-use tauri::AppHandle;
 
 /// Opacité à partir de laquelle un pixel compte comme « matière ». Assez bas
 /// pour retenir les bords adoucis par le détourage, assez haut pour ignorer le
@@ -384,38 +383,69 @@ fn cutout_cache(path: &str, model: &str, aggressiveness: u8) -> std::path::PathB
     std::env::temp_dir().join(format!("imagehub-planche-{:016x}.png", h.finish()))
 }
 
+/// La planche porte-t-elle déjà un détourage exploitable ?
+///
+/// Le seuil compte : une image opaque bordée de quelques pixels translucides
+/// (bords adoucis, coins arrondis) n'est pas une planche détourée. On exige
+/// donc qu'un vingtième de la surface au moins soit franchement transparent,
+/// ce qu'aucune image pleine n'atteint et que tout détourage dépasse largement.
+fn is_already_cut_out(path: &str) -> bool {
+    let Ok(img) = image::open(path) else {
+        return false;
+    };
+    let rgba = img.to_rgba8();
+    let total = (rgba.width() as u64) * (rgba.height() as u64);
+    if total == 0 {
+        return false;
+    }
+    let clear = rgba.pixels().filter(|p| p.0[3] < ALPHA_MIN).count() as u64;
+    clear * 20 >= total
+}
+
 /// Détoure la planche et retourne le chemin du PNG transparent obtenu.
 ///
 /// Le détourage occupe tous les cœurs (rembg) : le job passe par la file
 /// d'attente du Studio, dans le même couloir que l'action « Détourage ».
+///
+/// ⚠️ Cette commande n'émet **aucun** `job-progress`, et ce n'est pas un
+/// oubli. Elle ne figure pas dans la file affichée : chaque « terminé » y
+/// produisait donc un toast orphelin (« Traitement : terminé ») à chaque
+/// ouverture de la modale. Pire, ce toast fait rendre l'application, donc la
+/// modale, donc rejoue son effet de détourage — qui retombe sur le cache,
+/// répond aussitôt, et réémet un « terminé ». La boucle tournait à douze pour
+/// cent d'un cœur en noyant l'écran de notifications. La modale a son propre
+/// indicateur d'attente : elle n'a rien à recevoir par cette voie.
 #[tauri::command]
 pub async fn sheet_cutout(
-    app: AppHandle,
     job_id: String,
     path: String,
     model: Option<String>,
     aggressiveness: Option<u8>,
 ) -> Result<String, String> {
+    // Une planche DÉJÀ détourée n'a rien à faire dans rembg : son canal alpha
+    // dit déjà où sont les formes. Y repasser coûterait plusieurs secondes et
+    // dégraderait le résultat, puisque le détourage repart des composantes
+    // RGB — les zones transparentes y redeviennent opaques (souvent noires)
+    // avant d'être remasquées, ce qui cerne les pièces d'un liseré sombre.
+    if is_already_cut_out(&path) {
+        return Ok(path);
+    }
+
     let model = model.unwrap_or_else(|| SHEET_MODEL.to_string());
     let aggressiveness = aggressiveness.unwrap_or(50);
     let cache = cutout_cache(&path, &model, aggressiveness);
     if cache.is_file() {
-        crate::actions::emit(&app, &job_id, "done", 100, None, None);
         return Ok(cache.to_string_lossy().to_string());
     }
 
     let _permit = crate::queue::acquire("removeBg").await;
     if crate::queue::take_cancelled(&job_id) {
-        crate::actions::emit(&app, &job_id, "cancelled", 0, None, None);
         return Err("Découpe annulée".into());
     }
-    crate::actions::emit(&app, &job_id, "running", 20, None, None);
 
-    let app2 = app.clone();
     let job2 = job_id.clone();
     let result: Result<String, String> = tauri::async_runtime::spawn_blocking(move || {
         let mask = crate::actions::rembg_mask(&path, &job2, &model)?;
-        crate::actions::emit(&app2, &job2, "running", 70, None, None);
         let cutout = crate::actions::compose_cutout(&path, &mask, aggressiveness);
         let _ = std::fs::remove_file(&mask);
         cutout?
@@ -426,10 +456,6 @@ pub async fn sheet_cutout(
     .await
     .map_err(|e| e.to_string())?;
 
-    match &result {
-        Ok(_) => crate::actions::emit(&app, &job_id, "done", 100, None, None),
-        Err(e) => crate::actions::emit(&app, &job_id, "error", 100, None, Some(e.clone())),
-    }
     crate::queue::take_cancelled(&job_id);
     result
 }
@@ -654,6 +680,50 @@ mod tests {
             }
         }
         println!("pièces écrites dans {}", out.display());
+    }
+
+    #[test]
+    fn une_planche_deja_detouree_est_reconnue() {
+        let dir = std::env::temp_dir();
+
+        // planche détourée : deux formes sur du vide
+        let mut cut = RgbaImage::new(400, 300);
+        blob(&mut cut, 120, 150, 60);
+        blob(&mut cut, 280, 150, 60);
+        let p_cut = dir.join("imagehub-test-detouree.png");
+        cut.save(&p_cut).unwrap();
+        assert!(
+            is_already_cut_out(p_cut.to_str().unwrap()),
+            "une planche transparente doit être reconnue"
+        );
+
+        // planche sur fond plein : rien de transparent
+        let mut full = RgbaImage::from_pixel(400, 300, image::Rgba([40, 60, 40, 255]));
+        blob(&mut full, 200, 150, 60);
+        let p_full = dir.join("imagehub-test-fond-plein.png");
+        full.save(&p_full).unwrap();
+        assert!(
+            !is_already_cut_out(p_full.to_str().unwrap()),
+            "une planche sur fond plein doit passer par le détourage"
+        );
+
+        // un simple liseré translucide ne doit PAS passer pour un détourage
+        let mut edged = RgbaImage::from_pixel(400, 300, image::Rgba([40, 60, 40, 255]));
+        for x in 0..400 {
+            for y in [0u32, 1, 298, 299] {
+                edged.put_pixel(x, y, image::Rgba([0, 0, 0, 0]));
+            }
+        }
+        let p_edged = dir.join("imagehub-test-liseré.png");
+        edged.save(&p_edged).unwrap();
+        assert!(
+            !is_already_cut_out(p_edged.to_str().unwrap()),
+            "quelques pixels de bord ne font pas un détourage"
+        );
+
+        for p in [p_cut, p_full, p_edged] {
+            let _ = std::fs::remove_file(p);
+        }
     }
 
     #[test]
