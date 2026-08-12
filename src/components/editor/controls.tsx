@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 
 /** Petites briques de réglage de l'inspecteur. Elles n'existent que pour que
  *  l'inspecteur lui-même se lise comme une liste de propriétés, sans être
@@ -62,6 +62,55 @@ export function Slider({
         {Math.round(value * 100) / 100}
         {suffix}
       </span>
+    </div>
+  );
+}
+
+/** Valeur chiffrée qu'on saisit plutôt qu'on ne vise. La frappe n'est validée
+ *  qu'à la sortie du champ ou sur Entrée : réagir à chaque caractère ferait
+ *  passer une largeur par « 2 » avant d'atteindre « 250 », et le calque
+ *  s'écraserait sous les doigts. */
+export function NumberField({
+  label,
+  value,
+  min = 1,
+  suffix = "",
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min?: number;
+  suffix?: string;
+  onChange: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? String(Math.round(value));
+
+  const commit = () => {
+    if (draft === null) return;
+    const parsed = Number(draft.replace(",", "."));
+    setDraft(null);
+    if (Number.isFinite(parsed) && parsed >= min) onChange(parsed);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-20 shrink-0 text-[11px] text-zinc-500">{label}</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={shown}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") setDraft(null);
+        }}
+        className="min-w-0 flex-1 rounded-lg bg-card px-2 py-1 text-right text-[11px] tabular-nums text-zinc-200 outline-none focus:ring-1 focus:ring-accent"
+      />
+      {suffix && (
+        <span className="w-4 shrink-0 text-[11px] text-zinc-600">{suffix}</span>
+      )}
     </div>
   );
 }

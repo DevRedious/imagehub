@@ -15,7 +15,7 @@ export function newPage(name: string, layers: Layer[] = []): Page {
 }
 
 export function emptyComposition(): Composition {
-  const first = newPage("Page 1");
+  const first = newPage(autoName(0));
   return {
     name: "composition",
     base: { width: DEFAULT_FORMAT.width, height: DEFAULT_FORMAT.height },
@@ -51,7 +51,7 @@ export function loadComposition(): Composition {
     const pages =
       Array.isArray(parsed.pages) && parsed.pages.length > 0
         ? parsed.pages
-        : [newPage("Page 1", parsed.layers ?? [])];
+        : [newPage(autoName(0), parsed.layers ?? [])];
 
     const activePageId = pages.some((p) => p.id === parsed.activePageId)
       ? parsed.activePageId
@@ -73,6 +73,25 @@ export function saveComposition(c: Composition): void {
 
 export function clearComposition(): void {
   localStorage.removeItem(KEY);
+}
+
+/** Nom donné d'office à une page, d'après sa place dans le document. */
+export function autoName(index: number): string {
+  return `Page ${index + 1}`;
+}
+
+const AUTO_NAME = /^page\s*\d+$/i;
+
+/** Étiquette affichée pour une page.
+ *
+ *  Un nom automatique suit la POSITION : déplacer ou supprimer une page
+ *  renumérote la bande au lieu d'y laisser des trous, et une page issue d'une
+ *  découpe s'appelle « Page 4 » plutôt que « chatgpt-image-12-aout-2026-3 » —
+ *  un nom de fichier n'a rien à faire sur un onglet. Un nom saisi à la main,
+ *  lui, est rendu tel quel : c'est le seul cas où l'utilisateur a dit quelque
+ *  chose. */
+export function pageLabel(name: string, index: number): string {
+  return AUTO_NAME.test(name.trim()) ? autoName(index) : name;
 }
 
 /** Nom de fichier tiré du nom d'une page : « Page 2 » → `page-2`. */

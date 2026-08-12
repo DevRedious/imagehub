@@ -1,6 +1,7 @@
 import type Konva from "konva";
 import { forwardRef } from "react";
 import { Layer as KonvaLayer, Rect, Stage } from "react-konva";
+import type { Snap } from "../../lib/editor/layout";
 import type { Background, Layer } from "../../lib/editor/types";
 import { LayerNode } from "./LayerNode";
 
@@ -16,6 +17,7 @@ interface Props {
   onSelect?: (id: string, additive: boolean) => void;
   onChange?: (layer: Layer) => void;
   onBackgroundClick?: () => void;
+  onGuides?: (guides: Snap["guides"]) => void;
   registerNode?: (id: string, node: Konva.Node | null) => void;
   children?: React.ReactNode;
 }
@@ -45,12 +47,17 @@ export const CompositionStage = forwardRef<Konva.Stage, Props>(
       onSelect,
       onChange,
       onBackgroundClick,
+      onGuides,
       registerNode,
       children,
     },
     ref,
   ) {
     const g = gradientPoints(background.angle, width, height);
+    // Portée de l'aimant : une dizaine de pixels À L'ÉCRAN, quel que soit le
+    // zoom. Exprimée en unités du canevas, elle serait ridicule sur un plan de
+    // travail en 2560 de large et envahissante sur une vignette.
+    const snap = onGuides ? 10 / scale : 0;
     return (
       <Stage
         ref={ref}
@@ -97,8 +104,11 @@ export const CompositionStage = forwardRef<Konva.Stage, Props>(
               key={layer.id}
               layer={layer}
               images={images}
+              canvas={{ width, height }}
+              snap={snap}
               onSelect={onSelect}
               onChange={onChange}
+              onGuides={onGuides}
               registerNode={registerNode}
             />
           ))}

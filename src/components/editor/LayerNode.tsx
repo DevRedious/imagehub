@@ -2,14 +2,20 @@ import Konva from "konva";
 import type { Filter } from "konva/lib/Node";
 import { useCallback, useEffect, useState } from "react";
 import { Ellipse, Image as KonvaImage, Rect, Text } from "react-konva";
+import { type Size, type Snap, snapToEdges } from "../../lib/editor/layout";
 import type { Layer } from "../../lib/editor/types";
 
 interface Props {
   layer: Layer;
   images: Map<string, HTMLImageElement>;
+  /** plan de travail, pour l'aimant des bords */
+  canvas: Size;
+  /** portée de l'aimant, en unités du canevas ; 0 le désactive */
+  snap: number;
   /** absent en export : rien n'est ni sélectionnable ni déplaçable */
   onSelect?: (id: string, additive: boolean) => void;
   onChange?: (layer: Layer) => void;
+  onGuides?: (guides: Snap["guides"]) => void;
   registerNode?: (id: string, node: Konva.Node | null) => void;
 }
 
@@ -58,8 +64,11 @@ function useFilterCache(
 export function LayerNode({
   layer,
   images,
+  canvas,
+  snap,
   onSelect,
   onChange,
+  onGuides,
   registerNode,
 }: Props) {
   // une `ref` ne déclenche pas de rendu : sans état, l'effet de cache ne
@@ -79,8 +88,26 @@ export function LayerNode({
 
   const handleTransformEnd = useCallback(() => {
     if (!node || !onChange) return;
-    const sx = node.scaleX();
-    const sy = node.scaleY();
+    // Le nœud porte déjà une échelle au repos : -1 sur un axe retourné. Le
+    // facteur du redimensionnement, c'est donc l'écart À CETTE base, pas la
+    // valeur brute — sinon tirer une poignée sur un calque en miroir le
+    // dé-retournait au passage.
+    const baseX = layer.flipX ? -1 : 1;
+    const baseY = layer.flipY ? -1 : 1;
+    const sx = node.scaleX() / baseX;
+    const sy = node.scaleY() / baseY;
+
+    // Konva LAISSE l'échelle sur le nœud après un redimensionnement, et
+    // react-konva ne réécrit que les propriétés dont la valeur a changé côté
+    // React : `scaleX` valant toujours 1, personne ne la remettait à sa place.
+    // Le facteur restait donc collé au nœud et se multipliait à la largeur
+    // qu'on venait d'en déduire — chaque poignée tirée agrandissait deux fois,
+    // et vouloir réduire de moitié un calque déjà doublé le laissait plus gros
+    // qu'au départ. C'est le remède documenté par Konva, et il doit précéder
+    // le rendu suivant.
+    node.scaleX(baseX);
+    node.scaleY(baseY);
+
     // Le Transformer travaille en échelle ; on la reverse dans les dimensions
     // pour que le modèle reste lisible — une largeur reste une largeur, et un
     // calque agrandi ne traîne pas un facteur caché qui fausserait la
@@ -132,7 +159,27 @@ export function LayerNode({
     onMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => {
       onSelect?.(layer.id, e.evt.shiftKey || e.evt.ctrlKey);
     },
+    /** L'aimant agit PENDANT le déplacement, pas après : corriger la position
+     *  au relâchement ferait sauter la pièce sous le curseur, alors qu'ici
+     *  elle se colle au repère et s'en détache dès qu'on tire plus loin.
+     *
+     *  Konva raisonne en coordonnées absolues, donc à l'échelle d'affichage ;
+     *  l'aimant, lui, travaille dans les unités du canevas — celles où « le
+     *  bord » veut dire quelque chose. */
+    dragBoundFunc: (pos: { x: number; y: number }) => {
+      if (snap <= 0) return pos;
+      const s = node?.getStage()?.scaleX() || 1;
+      const aimant = snapToEdges(
+        { x: pos.x / s, y: pos.y / s },
+        layer,
+        canvas,
+        snap,
+      );
+      onGuides?.(aimant.guides);
+      return { x: aimant.x * s, y: aimant.y * s };
+    },
     onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+      onGuides?.({ x: null, y: null });
       onChange?.({ ...layer, x: e.target.x(), y: e.target.y() });
     },
     onTransformEnd: handleTransformEnd,
@@ -193,7 +240,14 @@ export function LayerNode({
       fill={layer.fill}
       stroke={layer.strokeWidth > 0 ? layer.stroke : undefined}
       strokeWidth={layer.strokeWidth}
-      cornerRadius={layer.cornerRadius}
+      // Un arrondi plus grand que la moitié du petit côté ne veut plus rien
+      // dire : Konva dessinerait des arcs qui se croisent. On borne à l'écran
+      // plutôt que dans le modèle, pour qu'un rectangle rétréci puis réélargi
+      // retrouve l'arrondi qu'on lui avait donné.
+      cornerRadius={Math.min(
+        layer.cornerRadius,
+        Math.min(layer.width, layer.height) / 2,
+      )}
     />
   );
 }

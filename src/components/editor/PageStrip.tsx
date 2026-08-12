@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { pageLabel } from "../../lib/editor/store";
 import type { Page } from "../../lib/editor/types";
 import { TrashIcon } from "../icons";
 
@@ -67,6 +68,10 @@ export function PageStrip({
 
       {pages.map((p, i) => {
         const active = p.id === activeId;
+        const label = pageLabel(p.name, i);
+        // le numéro ne double l'étiquette que lorsqu'elle ne le porte pas
+        // déjà : « 3 Page 3 » ne renseigne personne.
+        const named = label !== `Page ${i + 1}`;
         return (
           <div
             key={p.id}
@@ -76,9 +81,11 @@ export function PageStrip({
                 : "border-zinc-800 bg-card text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            <span className="w-4 shrink-0 text-center text-[10px] tabular-nums text-zinc-500">
-              {i + 1}
-            </span>
+            {named && (
+              <span className="w-4 shrink-0 text-center text-[10px] tabular-nums text-zinc-500">
+                {i + 1}
+              </span>
+            )}
 
             {editing === p.id ? (
               <input
@@ -97,13 +104,13 @@ export function PageStrip({
                 type="button"
                 onClick={() => onSelect(p.id)}
                 onDoubleClick={() => {
-                  setDraft(p.name);
+                  setDraft(label);
                   setEditing(p.id);
                 }}
-                title={`${p.name} — ${p.layers.length} calque(s)\nDouble-clic pour renommer`}
+                title={`${label} — ${p.layers.length} calque(s)\nDouble-clic pour renommer`}
                 className="cursor-pointer whitespace-nowrap px-0.5 text-[11px]"
               >
-                {p.name}
+                {label}
               </button>
             )}
 
@@ -147,8 +154,8 @@ export function PageStrip({
               <button
                 type="button"
                 onClick={() => onDelete(p.id)}
-                title={`Supprimer « ${p.name} »`}
-                aria-label={`Supprimer la page ${p.name}`}
+                title={`Supprimer « ${label} »`}
+                aria-label={`Supprimer la page ${label}`}
                 className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-zinc-700 bg-zinc-900/80 text-zinc-400 transition-colors hover:border-red-500/70 hover:bg-red-500/20 hover:text-red-400 focus-visible:border-red-500/70 focus-visible:text-red-400 focus-visible:outline-none"
               >
                 <TrashIcon size={10} />

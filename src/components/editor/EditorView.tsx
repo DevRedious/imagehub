@@ -12,8 +12,10 @@ import {
 import { formatById } from "../../lib/editor/formats";
 import { deriveAnchor, relayoutAll } from "../../lib/editor/layout";
 import {
+  autoName,
   loadComposition,
   newPage,
+  pageLabel,
   saveComposition,
 } from "../../lib/editor/store";
 import type { Background, Composition, Layer } from "../../lib/editor/types";
@@ -200,7 +202,7 @@ export function EditorView({
 
   const addPage = useCallback(() => {
     setComp((c) => {
-      const created = newPage(`Page ${c.pages.length + 1}`);
+      const created = newPage(autoName(c.pages.length));
       return { ...c, pages: [...c.pages, created], activePageId: created.id };
     });
     setSelected([]);
@@ -210,13 +212,17 @@ export function EditorView({
     setComp((c) => {
       const src = c.pages.find((p) => p.id === id);
       if (!src) return c;
+      const at = c.pages.findIndex((p) => p.id === id);
       // les calques sont recopiés avec de NOUVEAUX identifiants : deux pages
       // qui partageraient les mêmes ferait bouger l'une en éditant l'autre.
+      // La copie d'une page anonyme prend le numéro de sa nouvelle place ;
+      // seule une page nommée à la main mérite qu'on traîne un « (copie) ».
       const copy = newPage(
-        `${src.name} (copie)`,
+        pageLabel(src.name, at) === autoName(at)
+          ? autoName(at + 1)
+          : `${src.name} (copie)`,
         src.layers.map((l) => ({ ...l, id: crypto.randomUUID() })),
       );
-      const at = c.pages.findIndex((p) => p.id === id);
       const pages = [...c.pages];
       pages.splice(at + 1, 0, copy);
       return { ...c, pages, activePageId: copy.id };
@@ -263,8 +269,16 @@ export function EditorView({
   const pagesFromAssets = useCallback((added: Asset[]) => {
     if (added.length === 0) return;
     setComp((c) => {
-      const created = added.map((a) =>
-        newPage(a.name, [
+      // Un document encore vierge (une seule page, sans calque) est remplacé
+      // plutôt que gardé en tête : sinon la première page resterait blanche
+      // et polluerait l'export.
+      const vierge = c.pages.length === 1 && c.pages[0].layers.length === 0;
+      const first = vierge ? 0 : c.pages.length;
+      // La page prend son NUMÉRO, pas le nom du fichier découpé : « Page 4 »
+      // se lit sur un onglet, « chatgpt-image-12-aout-2026-3 » non. Le nom de
+      // la pièce reste sur son calque, où il sert encore à quelque chose.
+      const created = added.map((a, i) =>
+        newPage(autoName(first + i), [
           createCenteredImageLayer(
             a.path,
             a.name,
@@ -273,10 +287,6 @@ export function EditorView({
           ),
         ]),
       );
-      // Un document encore vierge (une seule page, sans calque) est remplacé
-      // plutôt que gardé en tête : sinon la première page resterait blanche
-      // et polluerait l'export.
-      const vierge = c.pages.length === 1 && c.pages[0].layers.length === 0;
       return {
         ...c,
         pages: vierge ? created : [...c.pages, ...created],

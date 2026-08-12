@@ -1,6 +1,8 @@
+import { useState } from "react";
+import { resizeLayer } from "../../lib/editor/layout";
 import type { AnchorX, AnchorY, Layer } from "../../lib/editor/types";
 import { ColorField } from "../ColorPicker";
-import { Choice, Section, Slider, Toggle } from "./controls";
+import { Choice, NumberField, Section, Slider, Toggle } from "./controls";
 
 interface Props {
   layer: Layer | null;
@@ -22,6 +24,11 @@ const ANCHOR_Y: { id: AnchorY; label: string }[] = [
 ];
 
 export function Inspector({ layer, canvas, onChange, onPickFont }: Props) {
+  /** Verrou de proportions, allumé par défaut : neuf fois sur dix on veut une
+   *  pièce plus grande, pas une pièce écrasée. Il vit ici plutôt que dans le
+   *  calque — c'est une façon de travailler, pas une propriété du document. */
+  const [ratioLock, setRatioLock] = useState(true);
+
   if (!layer) {
     return (
       <div className="rounded-xl bg-panel p-4">
@@ -38,8 +45,45 @@ export function Inspector({ layer, canvas, onChange, onPickFont }: Props) {
     onChange({ ...layer, [key]: value } as Layer);
   const long = Math.max(canvas.width, canvas.height);
 
+  /** Rapport à conserver quand le verrou est mis. Il est relu à chaque saisie
+   *  plutôt que mémorisé : le calque a pu être redimensionné à la souris
+   *  entre-temps, et un rapport figé le ferait sauter à sa forme d'avant. */
+  const ratio = layer.width / Math.max(layer.height, 1);
+  const resize = (w: number, h: number) => onChange(resizeLayer(layer, w, h));
+
   return (
     <div className="space-y-2">
+      <Section
+        title="TAILLE"
+        right={
+          <Toggle
+            label="proportions"
+            checked={ratioLock}
+            onChange={setRatioLock}
+          />
+        }
+      >
+        <NumberField
+          label="Largeur"
+          value={layer.width}
+          suffix="px"
+          onChange={(w) => resize(w, ratioLock ? w / ratio : layer.height)}
+        />
+        <NumberField
+          label="Hauteur"
+          value={layer.height}
+          suffix="px"
+          onChange={(h) => resize(ratioLock ? h * ratio : layer.width, h)}
+        />
+        {/* Le même verrou existe à la souris, sans réglage : les poignées
+            d'angle tiennent déjà le rapport, et Maj fait grandir depuis le
+            centre. */}
+        <p className="text-[10px] leading-snug text-zinc-600">
+          À la souris : coins = proportions tenues, <kbd>Maj</kbd> = depuis le
+          centre.
+        </p>
+      </Section>
+
       <Section title="DISPOSITION">
         <Slider
           label="Rotation"
@@ -191,12 +235,27 @@ export function Inspector({ layer, canvas, onChange, onPickFont }: Props) {
             onChange={(v) => onChange({ ...layer, strokeWidth: v })}
           />
           {layer.shape === "rect" && (
+            /* En pourcentage et non en pixels : 100 % vaut la moitié du petit
+               côté, c'est-à-dire le quart de cercle — l'angle le plus rond
+               qu'un rectangle puisse porter. Un réglage en pixels dépendait de
+               la taille du moment et ne disait jamais où était la butée. */
             <Slider
               label="Arrondi"
-              value={layer.cornerRadius}
+              value={Math.round(
+                (layer.cornerRadius /
+                  (Math.min(layer.width, layer.height) / 2)) *
+                  100,
+              )}
               min={0}
-              max={Math.min(layer.width, layer.height) / 2}
-              onChange={(v) => onChange({ ...layer, cornerRadius: v })}
+              max={100}
+              suffix="%"
+              onChange={(v) =>
+                onChange({
+                  ...layer,
+                  cornerRadius:
+                    (v / 100) * (Math.min(layer.width, layer.height) / 2),
+                })
+              }
             />
           )}
         </Section>

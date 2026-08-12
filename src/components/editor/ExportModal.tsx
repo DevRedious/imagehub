@@ -2,7 +2,7 @@ import type Konva from "konva";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FORMATS, type Format } from "../../lib/editor/formats";
 import { relayoutAll } from "../../lib/editor/layout";
-import { pageSlug } from "../../lib/editor/store";
+import { pageLabel, pageSlug } from "../../lib/editor/store";
 import type { Composition, Page } from "../../lib/editor/types";
 import { preloadImages } from "../../lib/editor/useImages";
 import { saveComposition, type Written } from "../../lib/library";
@@ -85,7 +85,7 @@ export function ExportModal({
   const suffixOf = useCallback(
     (shot: Shot) =>
       multiPage
-        ? `${pageSlug(shot.page.name, shot.index)}-${shot.format.suffix}`
+        ? `${pageSlug(pageLabel(shot.page.name, shot.index), shot.index)}-${shot.format.suffix}`
         : shot.format.suffix,
     [multiPage],
   );
@@ -124,7 +124,7 @@ export function ExportModal({
         });
       } catch (e) {
         report.current(
-          `Rendu de « ${current.page.name} » en ${current.format.label} impossible : ${e}`,
+          `Rendu de « ${pageLabel(current.page.name, current.index)} » en ${current.format.label} impossible : ${e}`,
         );
         setRunning(false);
         setQueue([]);
@@ -203,11 +203,8 @@ export function ExportModal({
                   onChange={() => toggle(pages, setPages, p.id)}
                   className="h-3.5 w-3.5 cursor-pointer accent-accent"
                 />
-                <span className="w-4 shrink-0 text-right text-[10px] tabular-nums text-zinc-600">
-                  {i + 1}
-                </span>
                 <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">
-                  {p.name}
+                  {pageLabel(p.name, i)}
                 </span>
                 <span className="shrink-0 text-[10px] text-zinc-600">
                   {p.layers.length} calque{p.layers.length > 1 ? "s" : ""}
