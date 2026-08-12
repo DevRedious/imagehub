@@ -114,11 +114,25 @@ export interface Background {
   angle: number;
 }
 
+/** Une page : un plan de travail parmi d'autres au sein d'une même
+ *  composition. Chaque page a ses propres calques ; le format et le fond,
+ *  eux, valent pour le document entier — une série se décline dans un seul
+ *  gabarit, et devoir régler le ratio page par page serait un piège à
+ *  incohérences. */
+export interface Page {
+  id: string;
+  name: string;
+  layers: Layer[];
+}
+
 export interface Composition {
   name: string;
   base: { width: number; height: number };
   background: Background;
-  layers: Layer[];
+  pages: Page[];
+  /** page en cours d'édition ; retombe sur la première si l'identifiant
+   *  ne correspond plus à rien */
+  activePageId: string;
 }
 
 export const DEFAULT_SHADOW: Shadow = {

@@ -10,6 +10,16 @@ import { ConfirmFilesModal } from "./components/ConfirmFilesModal";
 import { EmojiView } from "./components/EmojiView";
 import { EditorView } from "./components/editor/EditorView";
 import { HistoryView } from "./components/HistoryView";
+import {
+  EditorIcon,
+  EmojiIcon,
+  GearIcon,
+  HistoryIcon,
+  InfoIcon,
+  ProjectIcon,
+  QrIcon,
+  StudioIcon,
+} from "./components/icons";
 import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
 import { ProjectSkeleton } from "./components/ProjectSkeleton";
@@ -89,6 +99,19 @@ const QUALITY_KEY = "imagehub.avifQuality";
 const AGGRO_KEY = "imagehub.bgAggressiveness";
 const BG_MODEL_KEY = "imagehub.bgModel";
 const DUAL_THEME_KEY = "imagehub.dualTheme";
+
+/** Titre et icône de chaque vue. Table plutôt que cascade de ternaires :
+ *  ajouter une vue ne demande plus de démêler huit niveaux d'imbrication. */
+const TITLES: Record<View, { icon: React.ReactNode; label: string }> = {
+  studio: { icon: <StudioIcon size={17} />, label: "Studio" },
+  editor: { icon: <EditorIcon size={17} />, label: "Atelier" },
+  emojis: { icon: <EmojiIcon size={17} />, label: "Créateur d'emojis" },
+  qr: { icon: <QrIcon size={17} />, label: "Générateur de QR codes" },
+  history: { icon: <HistoryIcon size={17} />, label: "Historique" },
+  project: { icon: <ProjectIcon size={17} />, label: "Projet" },
+  settings: { icon: <GearIcon size={17} />, label: "Paramètres" },
+  about: { icon: <InfoIcon size={17} />, label: "À propos" },
+};
 
 export default function App() {
   const [staged, setStaged] = useState<string[]>([]);
@@ -908,22 +931,9 @@ export default function App() {
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="flex w-full flex-col gap-4 p-6">
           <header className="flex items-center gap-3">
-            <h1 className="text-base font-semibold text-zinc-300">
-              {view === "studio"
-                ? "🎨 Studio"
-                : view === "editor"
-                  ? "🖌️ Atelier"
-                  : view === "emojis"
-                    ? "😀 Créateur d'emojis"
-                    : view === "qr"
-                      ? "▦ Générateur de QR codes"
-                      : view === "about"
-                        ? "ℹ️ À propos"
-                        : view === "settings"
-                          ? "⚙️ Paramètres"
-                          : view === "history"
-                            ? "🕑 Historique"
-                            : "📂 Projet"}
+            <h1 className="flex items-center gap-2 text-base font-semibold text-zinc-300">
+              <span className="text-zinc-500">{TITLES[view].icon}</span>
+              {TITLES[view].label}
             </h1>
             {(view === "studio" || view === "project") && (
               <div className="ml-auto flex items-center gap-2">
@@ -933,7 +943,10 @@ export default function App() {
                   title="Historique des traitements"
                   className="cursor-pointer rounded-lg bg-card px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-accent-soft"
                 >
-                  🕑 Historique
+                  <span className="inline-flex items-center gap-1.5">
+                    <HistoryIcon size={13} />
+                    Historique
+                  </span>
                   {runningCount > 0 && (
                     <span className="ml-1.5 rounded-full bg-accent px-1.5 text-[10px] font-medium text-white">
                       {runningCount}

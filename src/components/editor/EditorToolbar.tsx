@@ -165,9 +165,9 @@ export function EditorToolbar({
             type="button"
             onClick={onClear}
             className="cursor-pointer rounded-lg px-2 py-1.5 text-[11px] text-zinc-500 transition-colors hover:text-red-400"
-            title="Vider le plan de travail"
+            title="Retirer tous les calques de cette page"
           >
-            Tout effacer
+            Vider la page
           </button>
         )}
         <button

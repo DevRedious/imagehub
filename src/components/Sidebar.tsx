@@ -2,6 +2,15 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { stackIcon } from "../lib/icons";
 import { KIND_LABEL } from "../lib/project";
 import type { SavedProject } from "../lib/projectsStore";
+import {
+  EditorIcon,
+  EmojiIcon,
+  GearIcon,
+  HistoryIcon,
+  InfoIcon,
+  QrIcon,
+  StudioIcon,
+} from "./icons";
 
 export type View =
   | "studio"
@@ -12,26 +21,6 @@ export type View =
   | "about"
   | "history"
   | "settings";
-
-/** icône « info » pour la page à propos */
-function InfoIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 16v-5M12 8.2v.1" />
-    </svg>
-  );
-}
 
 /** icône « sidebar » classique : panneau avec bande latérale */
 function PanelIcon() {
@@ -49,26 +38,6 @@ function PanelIcon() {
     >
       <rect x="3" y="3" width="18" height="18" rx="2" />
       <path d="M9 3v18" />
-    </svg>
-  );
-}
-
-/** icône « engrenage » pour la page paramètres */
-function GearIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
@@ -202,7 +171,7 @@ export function Sidebar({
         onClick={() => onView("studio")}
         title={collapsed ? "Studio" : undefined}
       >
-        <span className="text-base">🎨</span>
+        <StudioIcon size={collapsed ? 18 : 16} />
         {!collapsed && "Studio"}
       </button>
 
@@ -214,7 +183,7 @@ export function Sidebar({
         onClick={() => onView("editor")}
         title={collapsed ? "Atelier" : undefined}
       >
-        <span className="text-base">🖌️</span>
+        <EditorIcon size={collapsed ? 18 : 16} />
         {!collapsed && "Atelier"}
       </button>
 
@@ -226,7 +195,7 @@ export function Sidebar({
         onClick={() => onView("emojis")}
         title={collapsed ? "Emojis" : undefined}
       >
-        <span className="text-base">😀</span>
+        <EmojiIcon size={collapsed ? 18 : 16} />
         {!collapsed && "Emojis"}
       </button>
 
@@ -236,7 +205,7 @@ export function Sidebar({
         onClick={() => onView("qr")}
         title={collapsed ? "QR codes" : undefined}
       >
-        <span className="text-base">▦</span>
+        <QrIcon size={collapsed ? 18 : 16} />
         {!collapsed && "QR codes"}
       </button>
 
@@ -248,7 +217,7 @@ export function Sidebar({
         onClick={() => onView("history")}
         title={collapsed ? "Historique" : undefined}
       >
-        <span className="text-base">🕑</span>
+        <HistoryIcon size={collapsed ? 18 : 16} />
         {!collapsed && "Historique"}
         {runningCount > 0 &&
           (collapsed ? (

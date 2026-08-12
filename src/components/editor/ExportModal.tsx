@@ -1,8 +1,9 @@
 import type Konva from "konva";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FORMATS, type Format } from "../../lib/editor/formats";
 import { relayoutAll } from "../../lib/editor/layout";
-import type { Composition } from "../../lib/editor/types";
+import { pageSlug } from "../../lib/editor/store";
+import type { Composition, Page } from "../../lib/editor/types";
 import { preloadImages } from "../../lib/editor/useImages";
 import { saveComposition, type Written } from "../../lib/library";
 import { Modal } from "../Modal";
@@ -17,6 +18,13 @@ interface Props {
   onClose: () => void;
   onDone: (written: Written[]) => void;
   onError: (message: string) => void;
+}
+
+/** Un fichier à produire : une page vue dans un format. */
+interface Shot {
+  page: Page;
+  index: number;
+  format: Format;
 }
 
 /** Deux images successives laissent au navigateur le temps de peindre la
@@ -38,43 +46,69 @@ export function ExportModal({
   onError,
 }: Props) {
   const [name, setName] = useState(composition.name);
-  const [picked, setPicked] = useState<string[]>(["16x9"]);
+  const [formats, setFormats] = useState<string[]>(["16x9"]);
+  const [pages, setPages] = useState<string[]>(() =>
+    composition.pages.map((p) => p.id),
+  );
   const [running, setRunning] = useState(false);
-  const [queue, setQueue] = useState<Format[]>([]);
+  const [queue, setQueue] = useState<Shot[]>([]);
   const [index, setIndex] = useState(0);
   const shots = useRef<{ suffix: string; data: string }[]>([]);
   const stageRef = useRef<Konva.Stage | null>(null);
-  /** Mêmes précautions que dans la modale de découpe : une fonction reçue en
-   *  propriété change d'identité à chaque rendu du parent, et la mettre en
-   *  dépendance relancerait la capture en cours — ajoutant le même format
-   *  plusieurs fois au lot à écrire. */
+
+  /** Les fonctions reçues en propriété changent d'identité à chaque rendu du
+   *  parent : les garder hors des dépendances évite de relancer une capture
+   *  en cours, qui ajouterait deux fois le même fichier au lot. */
   const done = useRef(onDone);
   const report = useRef(onError);
   done.current = onDone;
   report.current = onError;
 
+  const multiPage = composition.pages.length > 1;
   const current = queue[index] ?? null;
 
+  /** Tous les fichiers que produirait l'export courant : chaque page retenue,
+   *  dans chaque format retenu. */
+  const planned = useMemo<Shot[]>(() => {
+    const chosen = FORMATS.filter((f) => formats.includes(f.id));
+    return composition.pages
+      .map((page, i) => ({ page, i }))
+      .filter(({ page }) => pages.includes(page.id))
+      .flatMap(({ page, i }) =>
+        chosen.map((format) => ({ page, index: i, format })),
+      );
+  }, [composition.pages, pages, formats]);
+
+  /** Le suffixe distingue les fichiers entre eux. La page n'y figure que si le
+   *  document en compte plusieurs : sinon `-16x9` suffit, et les noms d'une
+   *  composition d'une seule page ne changent pas. */
+  const suffixOf = useCallback(
+    (shot: Shot) =>
+      multiPage
+        ? `${pageSlug(shot.page.name, shot.index)}-${shot.format.suffix}`
+        : shot.format.suffix,
+    [multiPage],
+  );
+
   const start = useCallback(async () => {
-    const formats = FORMATS.filter((f) => picked.includes(f.id));
-    if (formats.length === 0) return;
+    if (planned.length === 0) return;
     setRunning(true);
     try {
       // l'export ne doit jamais partir sur un canevas à moitié peuplé
       await preloadImages(
-        composition.layers
-          .filter((l) => l.kind === "image")
-          .map((l) => (l.kind === "image" ? l.src : "")),
+        composition.pages.flatMap((p) =>
+          p.layers.flatMap((l) => (l.kind === "image" ? [l.src] : [])),
+        ),
       );
     } catch {
       /* une pièce illisible sera simplement absente du rendu */
     }
     shots.current = [];
     setIndex(0);
-    setQueue(formats);
-  }, [picked, composition.layers]);
+    setQueue(planned);
+  }, [planned, composition.pages]);
 
-  // capture le format courant, puis passe au suivant
+  // capture le fichier courant, puis passe au suivant
   useEffect(() => {
     if (!running || !current) return;
     let alive = true;
@@ -85,11 +119,13 @@ export function ExportModal({
       if (!stage) return;
       try {
         shots.current.push({
-          suffix: current.suffix,
+          suffix: suffixOf(current),
           data: stage.toDataURL({ pixelRatio: 1 }),
         });
       } catch (e) {
-        report.current(`Rendu du format ${current.label} impossible : ${e}`);
+        report.current(
+          `Rendu de « ${current.page.name} » en ${current.format.label} impossible : ${e}`,
+        );
         setRunning(false);
         setQueue([]);
         return;
@@ -98,7 +134,6 @@ export function ExportModal({
         setIndex(index + 1);
         return;
       }
-      // dernier format : on écrit tout
       try {
         const written = await saveComposition({
           name: name.trim() || "composition",
@@ -116,12 +151,10 @@ export function ExportModal({
     return () => {
       alive = false;
     };
-  }, [running, current, index, queue.length, name, dir]);
+  }, [running, current, index, queue.length, name, dir, suffixOf]);
 
-  const toggle = (id: string) =>
-    setPicked((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id],
-    );
+  const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
+    set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
   return (
     <Modal width="max-w-lg">
@@ -136,6 +169,55 @@ export function ExportModal({
         />
       </label>
 
+      {multiPage && (
+        <div className="mt-4">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[11px] font-semibold tracking-wider text-zinc-600">
+              PAGES
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setPages(
+                  pages.length === composition.pages.length
+                    ? []
+                    : composition.pages.map((p) => p.id),
+                )
+              }
+              className="cursor-pointer text-[11px] text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              {pages.length === composition.pages.length
+                ? "Tout décocher"
+                : "Tout cocher"}
+            </button>
+          </div>
+          <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto">
+            {composition.pages.map((p, i) => (
+              <label
+                key={p.id}
+                className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1 transition-colors hover:bg-card"
+              >
+                <input
+                  type="checkbox"
+                  checked={pages.includes(p.id)}
+                  onChange={() => toggle(pages, setPages, p.id)}
+                  className="h-3.5 w-3.5 cursor-pointer accent-accent"
+                />
+                <span className="w-4 shrink-0 text-right text-[10px] tabular-nums text-zinc-600">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-zinc-300">
+                  {p.name}
+                </span>
+                <span className="shrink-0 text-[10px] text-zinc-600">
+                  {p.layers.length} calque{p.layers.length > 1 ? "s" : ""}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 space-y-1.5">
         <p className="text-[11px] font-semibold tracking-wider text-zinc-600">
           FORMATS
@@ -147,8 +229,8 @@ export function ExportModal({
           >
             <input
               type="checkbox"
-              checked={picked.includes(f.id)}
-              onChange={() => toggle(f.id)}
+              checked={formats.includes(f.id)}
+              onChange={() => toggle(formats, setFormats, f.id)}
               className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-accent"
             />
             <span className="min-w-0 flex-1 text-xs text-zinc-300">
@@ -189,7 +271,14 @@ export function ExportModal({
         → {destination}
       </p>
 
-      <div className="mt-4 flex justify-end gap-2">
+      <div className="mt-4 flex items-center justify-end gap-2">
+        {/* un fichier par page ET par format : le compte évite la surprise
+            d'un export à quarante fichiers */}
+        {planned.length > 0 && !running && (
+          <span className="mr-auto text-[11px] text-zinc-600">
+            {planned.length} fichier{planned.length > 1 ? "s" : ""} à écrire
+          </span>
+        )}
         <button
           type="button"
           onClick={onClose}
@@ -201,12 +290,10 @@ export function ExportModal({
         <button
           type="button"
           onClick={start}
-          disabled={running || picked.length === 0}
+          disabled={running || planned.length === 0}
           className="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {running
-            ? `Rendu ${index + 1}/${queue.length}…`
-            : `Exporter ${picked.length} format${picked.length > 1 ? "s" : ""}`}
+          {running ? `Rendu ${index + 1}/${queue.length}…` : "Exporter"}
         </button>
       </div>
 
@@ -221,10 +308,14 @@ export function ExportModal({
         >
           <CompositionStage
             ref={stageRef}
-            layers={relayoutAll(composition.layers, composition.base, current)}
+            layers={relayoutAll(
+              current.page.layers,
+              composition.base,
+              current.format,
+            )}
             background={composition.background}
-            width={current.width}
-            height={current.height}
+            width={current.format.width}
+            height={current.format.height}
             scale={1}
             images={images}
           />

@@ -11,9 +11,8 @@ import {
 import { formatById } from "../../lib/editor/formats";
 import { deriveAnchor, relayoutAll } from "../../lib/editor/layout";
 import {
-  clearComposition,
-  emptyComposition,
   loadComposition,
+  newPage,
   saveComposition,
 } from "../../lib/editor/store";
 import type { Background, Composition, Layer } from "../../lib/editor/types";
@@ -36,6 +35,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { ExportModal } from "./ExportModal";
 import { Inspector } from "./Inspector";
 import { LayerList } from "./LayerList";
+import { PageStrip } from "./PageStrip";
 import { SheetModal } from "./SheetModal";
 
 interface Props {
@@ -83,32 +83,65 @@ export function EditorView({
 
   useEffect(refreshAssets, [refreshAssets]);
 
+  /** Page en cours. Retomber sur la première plutôt que de rendre du vide :
+   *  un identifiant orphelin (page supprimée, reprise d'une session
+   *  antérieure) ne doit pas laisser l'éditeur sans plan de travail. */
+  const page = useMemo(
+    () => comp.pages.find((p) => p.id === comp.activePageId) ?? comp.pages[0],
+    [comp.pages, comp.activePageId],
+  );
+
+  /** Toutes les images du document, pas seulement celles de la page ouverte :
+   *  changer de page devient instantané, et l'export ne part jamais sur une
+   *  page dont les pixels ne sont pas encore lus. */
   const paths = useMemo(
-    () => comp.layers.flatMap((l) => (l.kind === "image" ? [l.src] : [])),
-    [comp.layers],
+    () =>
+      comp.pages.flatMap((p) =>
+        p.layers.flatMap((l) => (l.kind === "image" ? [l.src] : [])),
+      ),
+    [comp.pages],
   );
   const images = useImages(paths);
 
-  /* ---------- calques ---------- */
+  /* ---------- calques (sur la page ouverte) ---------- */
 
-  const updateLayer = useCallback((next: Layer) => {
-    setComp((c) => ({
-      ...c,
-      layers: c.layers.map((l) =>
-        l.id !== next.id
-          ? l
-          : // l'ancrage suit le calque tant qu'on ne l'a pas figé à la main
-            next.anchorAuto
-            ? { ...next, anchor: deriveAnchor(next.x, next.y, c.base) }
-            : next,
-      ),
-    }));
-  }, []);
+  /** Toute modification de calque passe par ici : elle ne touche que la page
+   *  active, les autres restent intactes. */
+  const editPage = useCallback(
+    (fn: (layers: Layer[], c: Composition) => Layer[]) => {
+      setComp((c) => ({
+        ...c,
+        pages: c.pages.map((p) =>
+          p.id === c.activePageId ? { ...p, layers: fn(p.layers, c) } : p,
+        ),
+      }));
+    },
+    [],
+  );
 
-  const addLayer = useCallback((layer: Layer) => {
-    setComp((c) => ({ ...c, layers: [...c.layers, layer] }));
-    setSelected([layer.id]);
-  }, []);
+  const updateLayer = useCallback(
+    (next: Layer) => {
+      editPage((layers, c) =>
+        layers.map((l) =>
+          l.id !== next.id
+            ? l
+            : // l'ancrage suit le calque tant qu'on ne l'a pas figé à la main
+              next.anchorAuto
+              ? { ...next, anchor: deriveAnchor(next.x, next.y, c.base) }
+              : next,
+        ),
+      );
+    },
+    [editPage],
+  );
+
+  const addLayer = useCallback(
+    (layer: Layer) => {
+      editPage((layers) => [...layers, layer]);
+      setSelected([layer.id]);
+    },
+    [editPage],
+  );
 
   const addAsset = useCallback(
     (asset: Asset, at?: { x: number; y: number }) => {
@@ -123,51 +156,126 @@ export function EditorView({
     [addLayer, comp.base],
   );
 
-  const removeLayer = useCallback((id: string) => {
-    setComp((c) => ({ ...c, layers: c.layers.filter((l) => l.id !== id) }));
-    setSelected((s) => s.filter((x) => x !== id));
-  }, []);
+  const removeLayer = useCallback(
+    (id: string) => {
+      editPage((layers) => layers.filter((l) => l.id !== id));
+      setSelected((sel) => sel.filter((x) => x !== id));
+    },
+    [editPage],
+  );
 
   /** Monte ou descend un calque d'un cran dans la pile de dessin. */
-  const raiseLayer = useCallback((id: string, delta: number) => {
-    setComp((c) => {
-      const i = c.layers.findIndex((l) => l.id === id);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= c.layers.length) return c;
-      const layers = [...c.layers];
-      [layers[i], layers[j]] = [layers[j], layers[i]];
-      return { ...c, layers };
-    });
-  }, []);
+  const raiseLayer = useCallback(
+    (id: string, delta: number) => {
+      editPage((layers) => {
+        const i = layers.findIndex((l) => l.id === id);
+        const j = i + delta;
+        if (i < 0 || j < 0 || j >= layers.length) return layers;
+        const next = [...layers];
+        [next[i], next[j]] = [next[j], next[i]];
+        return next;
+      });
+    },
+    [editPage],
+  );
 
   const duplicate = useCallback(
     (id: string) => {
-      const src = comp.layers.find((l) => l.id === id);
+      const src = page?.layers.find((l) => l.id === id);
       if (src) addLayer(duplicateLayer(src, comp.base));
     },
-    [comp.layers, comp.base, addLayer],
+    [page, comp.base, addLayer],
   );
 
   const mirror = useCallback(
     (id: string) => {
-      const src = comp.layers.find((l) => l.id === id);
+      const src = page?.layers.find((l) => l.id === id);
       if (src) addLayer(mirrorLayer(src, comp.base));
     },
-    [comp.layers, comp.base, addLayer],
+    [page, comp.base, addLayer],
   );
+
+  /* ---------- pages ---------- */
+
+  const addPage = useCallback(() => {
+    setComp((c) => {
+      const created = newPage(`Page ${c.pages.length + 1}`);
+      return { ...c, pages: [...c.pages, created], activePageId: created.id };
+    });
+    setSelected([]);
+  }, []);
+
+  const duplicatePage = useCallback((id: string) => {
+    setComp((c) => {
+      const src = c.pages.find((p) => p.id === id);
+      if (!src) return c;
+      // les calques sont recopiés avec de NOUVEAUX identifiants : deux pages
+      // qui partageraient les mêmes ferait bouger l'une en éditant l'autre.
+      const copy = newPage(
+        `${src.name} (copie)`,
+        src.layers.map((l) => ({ ...l, id: crypto.randomUUID() })),
+      );
+      const at = c.pages.findIndex((p) => p.id === id);
+      const pages = [...c.pages];
+      pages.splice(at + 1, 0, copy);
+      return { ...c, pages, activePageId: copy.id };
+    });
+    setSelected([]);
+  }, []);
+
+  const deletePage = useCallback((id: string) => {
+    setComp((c) => {
+      if (c.pages.length <= 1) return c;
+      const at = c.pages.findIndex((p) => p.id === id);
+      const pages = c.pages.filter((p) => p.id !== id);
+      const fallback = pages[Math.min(at, pages.length - 1)];
+      return {
+        ...c,
+        pages,
+        activePageId: c.activePageId === id ? fallback.id : c.activePageId,
+      };
+    });
+    setSelected([]);
+  }, []);
+
+  const renamePage = useCallback((id: string, name: string) => {
+    setComp((c) => ({
+      ...c,
+      pages: c.pages.map((p) => (p.id === id ? { ...p, name } : p)),
+    }));
+  }, []);
+
+  const movePage = useCallback((id: string, delta: number) => {
+    setComp((c) => {
+      const i = c.pages.findIndex((p) => p.id === id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= c.pages.length) return c;
+      const pages = [...c.pages];
+      [pages[i], pages[j]] = [pages[j], pages[i]];
+      return { ...c, pages };
+    });
+  }, []);
+
+  const selectPage = useCallback((id: string) => {
+    setComp((c) => ({ ...c, activePageId: id }));
+    setSelected([]);
+  }, []);
 
   /* ---------- plan de travail ---------- */
 
-  /** Changer de plan de travail ne recommence pas la composition : elle est
-   *  transposée dans le nouveau format, ancrages compris. C'est la même
-   *  opération que l'export multi-formats, appliquée à l'écran. */
+  /** Changer de plan de travail ne recommence pas la composition : TOUTES les
+   *  pages sont transposées dans le nouveau format, ancrages compris. C'est la
+   *  même opération que l'export multi-formats, appliquée à l'écran. */
   const changeBase = useCallback((id: string) => {
     const f = formatById(id);
     if (!f) return;
     setComp((c) => ({
       ...c,
       base: { width: f.width, height: f.height },
-      layers: relayoutAll(c.layers, c.base, f),
+      pages: c.pages.map((p) => ({
+        ...p,
+        layers: relayoutAll(p.layers, c.base, f),
+      })),
     }));
   }, []);
 
@@ -234,7 +342,7 @@ export function EditorView({
       const id = fontPickerFor;
       setFontPickerFor(null);
       if (!id) return;
-      const layer = comp.layers.find((l) => l.id === id);
+      const layer = page?.layers.find((l) => l.id === id);
       if (layer?.kind !== "text") return;
       if (!file) {
         updateLayer({ ...layer, fontFamily: "", fontPath: null });
@@ -252,7 +360,7 @@ export function EditorView({
         onToast("error", `Police illisible : ${e}`);
       }
     },
-    [fontPickerFor, comp.layers, updateLayer, onToast],
+    [fontPickerFor, page, updateLayer, onToast],
   );
 
   /* ---------- raccourcis ---------- */
@@ -279,7 +387,7 @@ export function EditorView({
 
   const current =
     selected.length === 1
-      ? (comp.layers.find((l) => l.id === selected[0]) ?? null)
+      ? (page?.layers.find((l) => l.id === selected[0]) ?? null)
       : null;
 
   const baseId =
@@ -303,15 +411,13 @@ export function EditorView({
         }
         onExport={() => setExporting(true)}
         onClear={() => {
-          setComp((c) => ({
-            ...emptyComposition(),
-            base: c.base,
-            name: c.name,
-          }));
+          // uniquement la page ouverte : effacer les autres au passage serait
+          // une perte silencieuse, et le bouton siège parmi les outils de
+          // calque, pas parmi ceux du document.
+          editPage(() => []);
           setSelected([]);
-          clearComposition();
         }}
-        layerCount={comp.layers.length}
+        layerCount={page?.layers.length ?? 0}
       />
 
       <div className="flex min-h-0 flex-1 gap-3">
@@ -326,7 +432,7 @@ export function EditorView({
         />
 
         <EditorCanvas
-          layers={comp.layers}
+          layers={page?.layers ?? []}
           background={comp.background}
           width={comp.base.width}
           height={comp.base.height}
@@ -342,7 +448,7 @@ export function EditorView({
 
         <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto">
           <LayerList
-            layers={comp.layers}
+            layers={page?.layers ?? []}
             selected={selected}
             onSelect={setSelected}
             onChange={updateLayer}
@@ -359,6 +465,17 @@ export function EditorView({
           />
         </div>
       </div>
+
+      <PageStrip
+        pages={comp.pages}
+        activeId={page?.id ?? ""}
+        onSelect={selectPage}
+        onAdd={addPage}
+        onDuplicate={duplicatePage}
+        onDelete={deletePage}
+        onRename={renamePage}
+        onMove={movePage}
+      />
 
       {confirmClear && (
         <Modal>
@@ -430,9 +547,9 @@ export function EditorView({
           picked={fonts.picked}
           dir={fonts.dir}
           value={
-            comp.layers.find((l) => l.id === fontPickerFor)?.kind === "text"
+            page?.layers.find((l) => l.id === fontPickerFor)?.kind === "text"
               ? ((
-                  comp.layers.find((l) => l.id === fontPickerFor) as {
+                  page?.layers.find((l) => l.id === fontPickerFor) as {
                     fontPath: string | null;
                   }
                 ).fontPath ?? "")
@@ -440,7 +557,7 @@ export function EditorView({
           }
           caption={
             (
-              comp.layers.find((l) => l.id === fontPickerFor) as {
+              page?.layers.find((l) => l.id === fontPickerFor) as {
                 text?: string;
               }
             )?.text || "Votre titre"
