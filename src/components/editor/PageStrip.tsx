@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Page } from "../../lib/editor/types";
+import { TrashIcon } from "../icons";
 
 interface Props {
   pages: Page[];
@@ -106,13 +107,18 @@ export function PageStrip({
               </button>
             )}
 
-            <div className="hidden items-center gap-0.5 group-hover:flex">
+            {/* Déplacer et dupliquer s'effacent hors survol, mais gardent leur
+                place : les faire APPARAÎTRE élargissait la pastille et
+                repoussait la corbeille vers la droite — on visait, la cible
+                s'enfuyait. `pointer-events-none` évite au passage des boutons
+                invisibles mais cliquables. */}
+            <div className="flex items-center gap-0.5 opacity-0 transition-opacity pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto">
               <button
                 type="button"
                 onClick={() => onMove(p.id, -1)}
                 disabled={i === 0}
                 title="Déplacer vers la gauche"
-                className="cursor-pointer px-0.5 text-zinc-600 transition-transform hover:scale-125 hover:text-zinc-200 disabled:cursor-default disabled:opacity-30 disabled:hover:scale-100"
+                className="cursor-pointer px-0.5 text-zinc-500 transition-transform hover:scale-125 hover:text-zinc-200 disabled:cursor-default disabled:opacity-30 disabled:hover:scale-100"
               >
                 ‹
               </button>
@@ -121,7 +127,7 @@ export function PageStrip({
                 onClick={() => onMove(p.id, 1)}
                 disabled={i === pages.length - 1}
                 title="Déplacer vers la droite"
-                className="cursor-pointer px-0.5 text-zinc-600 transition-transform hover:scale-125 hover:text-zinc-200 disabled:cursor-default disabled:opacity-30 disabled:hover:scale-100"
+                className="cursor-pointer px-0.5 text-zinc-500 transition-transform hover:scale-125 hover:text-zinc-200 disabled:cursor-default disabled:opacity-30 disabled:hover:scale-100"
               >
                 ›
               </button>
@@ -129,23 +135,25 @@ export function PageStrip({
                 type="button"
                 onClick={() => onDuplicate(p.id)}
                 title="Dupliquer la page"
-                className="cursor-pointer px-0.5 text-zinc-600 transition-transform hover:scale-125 hover:text-zinc-200"
+                className="cursor-pointer px-0.5 text-zinc-500 transition-transform hover:scale-125 hover:text-zinc-200"
               >
                 ⧉
               </button>
-              {/* la dernière page ne se supprime pas : un document sans page
-                  n'aurait plus rien à montrer ni où poser un calque */}
-              {pages.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(p.id)}
-                  title="Supprimer la page"
-                  className="cursor-pointer px-0.5 text-zinc-600 transition-transform hover:scale-125 hover:text-red-400"
-                >
-                  ✕
-                </button>
-              )}
             </div>
+
+            {/* la dernière page ne se supprime pas : un document sans page
+                n'aurait plus rien à montrer ni où poser un calque */}
+            {pages.length > 1 && (
+              <button
+                type="button"
+                onClick={() => onDelete(p.id)}
+                title={`Supprimer « ${p.name} »`}
+                aria-label={`Supprimer la page ${p.name}`}
+                className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-zinc-700 bg-zinc-900/80 text-zinc-400 transition-colors hover:border-red-500/70 hover:bg-red-500/20 hover:text-red-400 focus-visible:border-red-500/70 focus-visible:text-red-400 focus-visible:outline-none"
+              >
+                <TrashIcon size={10} />
+              </button>
+            )}
           </div>
         );
       })}

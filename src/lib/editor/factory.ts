@@ -63,6 +63,35 @@ export function createImageLayer(
   return { ...base(name, x, y, w, h, canvas), kind: "image", src };
 }
 
+/** Pose une pièce seule, centrée et mise à l'échelle du plan de travail.
+ *
+ *  C'est ce que produit « une page par pièce » : chaque élément découpé occupe
+ *  sa propre page, prêt à sortir tel quel. On vise 85 % du plan de travail
+ *  plutôt que 100 % — un visuel collé aux bords n'a plus d'air, et le moindre
+ *  recadrage ultérieur le rognerait.
+ *
+ *  L'échelle n'est pas plafonnée à 1 : une pièce plus petite que la page est
+ *  agrandie pour la remplir, ce qui est bien l'effet attendu d'un « visuel par
+ *  page », au prix d'un rendu plus doux si l'écart est grand. */
+export function createCenteredImageLayer(
+  src: string,
+  name: string,
+  natural: { width: number; height: number },
+  canvas: Size,
+): ImageLayer {
+  const scale = Math.min(
+    (canvas.width * 0.85) / Math.max(natural.width, 1),
+    (canvas.height * 0.85) / Math.max(natural.height, 1),
+  );
+  const w = Math.max(8, natural.width * scale);
+  const h = Math.max(8, natural.height * scale);
+  return {
+    ...base(name, canvas.width / 2, canvas.height / 2, w, h, canvas),
+    kind: "image",
+    src,
+  };
+}
+
 export function createTextLayer(
   canvas: Size,
   at?: { x: number; y: number },

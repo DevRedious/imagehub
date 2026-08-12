@@ -15,7 +15,8 @@ import { Slider } from "./controls";
 interface Props {
   /** planche à découper */
   path: string;
-  onDone: (assets: Asset[]) => void;
+  /** `perPage` : créer une page par pièce retenue dans la composition */
+  onDone: (assets: Asset[], perPage: boolean) => void;
   onClose: () => void;
   onError: (message: string) => void;
 }
@@ -35,6 +36,9 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
   );
   const [gap, setGap] = useState(SHEET_DEFAULTS.gap);
   const [minSize, setMinSize] = useState(SHEET_DEFAULTS.minSize);
+  /** Une page par pièce : le geste courant est de découper une planche pour
+   *  en sortir chaque élément isolément, d'où la valeur par défaut. */
+  const [perPage, setPerPage] = useState(true);
 
   const [cutout, setCutout] = useState<string | null>(null);
   const [pieces, setPieces] = useState<Piece[]>([]);
@@ -121,13 +125,13 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
         minSize,
         keep: keep.map((p) => p.index),
       });
-      onDone(assets);
+      onDone(assets, perPage);
     } catch (e) {
       onError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [cutout, keep, stem, gap, minSize, onDone, onError]);
+  }, [cutout, keep, stem, gap, minSize, perPage, onDone, onError]);
 
   return (
     <Modal width="max-w-4xl">
@@ -202,6 +206,23 @@ export function SheetModal({ path, onDone, onClose, onError }: Props) {
               onChange={setMinSize}
             />
           </div>
+
+          <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-card p-3 text-[11px] text-zinc-400">
+            <input
+              type="checkbox"
+              checked={perPage}
+              onChange={(e) => setPerPage(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-accent"
+            />
+            <span>
+              Une page par pièce
+              <span className="block text-[10px] leading-snug text-zinc-600">
+                Chaque élément retenu part sur sa propre page, centré au plan de
+                travail — de quoi tout exporter d'un coup, un fichier par
+                visuel. Décoché, les pièces ne rejoignent que la bibliothèque.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div className="min-h-[16rem] rounded-xl bg-card p-3">

@@ -111,6 +111,18 @@ export function InfoIcon({ size }: IconProps) {
   );
 }
 
+/** Corbeille : le geste se lit avant même le survol, là où une croix ne dit
+ *  que « fermer ». */
+export function TrashIcon({ size = 13 }: IconProps) {
+  return (
+    <Glyph size={size}>
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </Glyph>
+  );
+}
+
 /** Projet : un dossier. */
 export function ProjectIcon({ size }: IconProps) {
   return (

@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createCenteredImageLayer,
   createImageLayer,
   createShapeLayer,
   createTextLayer,
@@ -254,6 +255,35 @@ export function EditorView({
       [pages[i], pages[j]] = [pages[j], pages[i]];
       return { ...c, pages };
     });
+  }, []);
+
+  /** Transforme un lot de pièces en autant de pages, chacune portant son
+   *  élément centré. C'est la suite naturelle d'une découpe de planche : huit
+   *  visuels donnent huit pages, et l'export en sort huit fichiers propres. */
+  const pagesFromAssets = useCallback((added: Asset[]) => {
+    if (added.length === 0) return;
+    setComp((c) => {
+      const created = added.map((a) =>
+        newPage(a.name, [
+          createCenteredImageLayer(
+            a.path,
+            a.name,
+            { width: a.width ?? 512, height: a.height ?? 512 },
+            c.base,
+          ),
+        ]),
+      );
+      // Un document encore vierge (une seule page, sans calque) est remplacé
+      // plutôt que gardé en tête : sinon la première page resterait blanche
+      // et polluerait l'export.
+      const vierge = c.pages.length === 1 && c.pages[0].layers.length === 0;
+      return {
+        ...c,
+        pages: vierge ? created : [...c.pages, ...created],
+        activePageId: created[0].id,
+      };
+    });
+    setSelected([]);
   }, []);
 
   const selectPage = useCallback((id: string) => {
@@ -510,12 +540,15 @@ export function EditorView({
           path={sheetPath}
           onClose={() => setSheetPath(null)}
           onError={(m) => onToast("error", m)}
-          onDone={(added) => {
+          onDone={(added, perPage) => {
             setSheetPath(null);
             setAssets((prev) => [...added, ...prev]);
+            if (perPage) pagesFromAssets(added);
             onToast(
               "success",
-              `${added.length} pièce(s) ajoutée(s) à la bibliothèque`,
+              perPage
+                ? `${added.length} pièce(s) — autant de pages créées`
+                : `${added.length} pièce(s) ajoutée(s) à la bibliothèque`,
             );
           }}
         />
