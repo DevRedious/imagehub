@@ -8,6 +8,7 @@ import { AboutView } from "./components/AboutView";
 import { ConfirmDeleteModal } from "./components/ConfirmDeleteModal";
 import { ConfirmFilesModal } from "./components/ConfirmFilesModal";
 import { EmojiView } from "./components/EmojiView";
+import { EditorView } from "./components/editor/EditorView";
 import { HistoryView } from "./components/HistoryView";
 import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
@@ -633,6 +634,14 @@ export default function App() {
     }
   }
 
+  /** Où atterrissent les compositions de l'Atelier. Un projet connecté les
+   *  reçoit dans son dossier d'assets ; sinon elles vont au dépôt. */
+  function editorDest(): string {
+    if (project?.asset_dir) return `${project.name} — ${project.asset_dir}`;
+    if (project?.root) return `${project.name} — ${project.root}`;
+    return `${depotDir || "~/Images/ImageHub"}/compositions`;
+  }
+
   // Le contexte de sortie est EXPLICITE : `proj` non nul = Studio projet (écrit
   // dans le projet) ; null = Studio libre (dépôt ImageHub via outputPrefs). Plus
   // de lecture implicite du projet connecté → fin de l'erreur silencieuse.
@@ -902,17 +911,19 @@ export default function App() {
             <h1 className="text-base font-semibold text-zinc-300">
               {view === "studio"
                 ? "🎨 Studio"
-                : view === "emojis"
-                  ? "😀 Créateur d'emojis"
-                  : view === "qr"
-                    ? "▦ Générateur de QR codes"
-                    : view === "about"
-                      ? "ℹ️ À propos"
-                      : view === "settings"
-                        ? "⚙️ Paramètres"
-                        : view === "history"
-                          ? "🕑 Historique"
-                          : "📂 Projet"}
+                : view === "editor"
+                  ? "🖌️ Atelier"
+                  : view === "emojis"
+                    ? "😀 Créateur d'emojis"
+                    : view === "qr"
+                      ? "▦ Générateur de QR codes"
+                      : view === "about"
+                        ? "ℹ️ À propos"
+                        : view === "settings"
+                          ? "⚙️ Paramètres"
+                          : view === "history"
+                            ? "🕑 Historique"
+                            : "📂 Projet"}
             </h1>
             {(view === "studio" || view === "project") && (
               <div className="ml-auto flex items-center gap-2">
@@ -950,6 +961,14 @@ export default function App() {
               }
               onReveal={revealOutput}
               onPreview={setPreview}
+            />
+          ) : view === "editor" ? (
+            <EditorView
+              projectRoot={project?.root ?? null}
+              projectAssetDir={project?.asset_dir ?? null}
+              destination={editorDest()}
+              onReveal={revealOutput}
+              onToast={pushToast}
             />
           ) : view === "emojis" ? (
             <EmojiView

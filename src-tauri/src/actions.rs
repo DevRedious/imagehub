@@ -247,7 +247,7 @@ fn upscale(input: &str, dest: &str) -> Result<(), String> {
 
 /// Lance rembg en mode « masque seul » → PNG temporaire contenant le masque
 /// doux (niveaux de gris 0..255) du modèle. `tag` rend le nom unique par job.
-fn rembg_mask(input: &str, tag: &str, model: &str) -> Result<PathBuf, String> {
+pub(crate) fn rembg_mask(input: &str, tag: &str, model: &str) -> Result<PathBuf, String> {
     let rembg = crate::tools::rembg_path()
         .ok_or("rembg non installé (venv ~/.local/share/imagehub-venv ou pip install rembg)")?;
     let tmp = std::env::temp_dir().join(format!("imagehub-mask-{tag}.png"));
@@ -266,7 +266,11 @@ fn rembg_mask(input: &str, tag: &str, model: &str) -> Result<PathBuf, String> {
 /// et on déplace la fenêtre de seuil : plus l'agressivité est BASSE, plus on
 /// conserve les pixels de faible confiance (petits détails) ; plus elle est
 /// HAUTE, plus on n'garde que les zones franches.
-fn compose_cutout(original: &str, mask: &Path, aggressiveness: u8) -> Result<image::RgbaImage, String> {
+pub(crate) fn compose_cutout(
+    original: &str,
+    mask: &Path,
+    aggressiveness: u8,
+) -> Result<image::RgbaImage, String> {
     let rgb = image::open(original)
         .map_err(|e| format!("Image source illisible : {e}"))?
         .to_rgb8();

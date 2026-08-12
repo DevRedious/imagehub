@@ -5,6 +5,7 @@ import type { SavedProject } from "../lib/projectsStore";
 
 export type View =
   | "studio"
+  | "editor"
   | "emojis"
   | "qr"
   | "project"
@@ -203,6 +204,18 @@ export function Sidebar({
       >
         <span className="text-base">🎨</span>
         {!collapsed && "Studio"}
+      </button>
+
+      <button
+        type="button"
+        className={
+          collapsed ? railBtn(view === "editor") : navBtn(view === "editor")
+        }
+        onClick={() => onView("editor")}
+        title={collapsed ? "Atelier" : undefined}
+      >
+        <span className="text-base">🖌️</span>
+        {!collapsed && "Atelier"}
       </button>
 
       <button

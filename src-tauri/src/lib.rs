@@ -1,11 +1,14 @@
 mod actions;
+mod compose;
 mod emoji;
 mod icon_packs;
 mod icon_prompts;
 mod inputs;
+mod library;
 mod project;
 mod qr;
 mod queue;
+mod sheet;
 mod thumbs;
 mod tools;
 mod watcher;
@@ -32,6 +35,16 @@ pub fn run() {
             project::scan_image_usages,
             project::delete_files,
             inputs::expand_inputs,
+            library::library_dir,
+            library::library_list,
+            library::library_import,
+            library::library_delete,
+            library::library_rename,
+            sheet::sheet_cutout,
+            sheet::sheet_preview,
+            sheet::sheet_commit,
+            compose::composition_dir,
+            compose::save_composition,
             emoji::emoji_dir,
             emoji::list_svgs,
             emoji::save_emoji_svg,
