@@ -28,6 +28,7 @@ import {
 import { basename } from "../../lib/paths";
 import { type FontFile, loadFontFile } from "../../lib/qr";
 import { FontPicker } from "../FontPicker";
+import { Modal } from "../Modal";
 import type { ToastKind } from "../Toaster";
 import { AssetPanel } from "./AssetPanel";
 import { EditorCanvas } from "./EditorCanvas";
@@ -61,6 +62,9 @@ export function EditorView({
   const [sheetPath, setSheetPath] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [fontPickerFor, setFontPickerFor] = useState<string | null>(null);
+  /** vidage complet en attente de confirmation : la bibliothèque est un
+   *  travail de découpe, on ne l'efface pas sur un clic malheureux */
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const fonts = useFontLibrary(projectRoot);
 
@@ -211,6 +215,18 @@ export function EditorView({
     [onToast],
   );
 
+  const clearLibrary = useCallback(async () => {
+    setConfirmClear(false);
+    if (assets.length === 0) return;
+    try {
+      await libraryDelete(assets.map((a) => a.path));
+      setAssets([]);
+      onToast("info", "Bibliothèque vidée");
+    } catch (e) {
+      onToast("error", String(e));
+    }
+  }, [assets, onToast]);
+
   /* ---------- polices ---------- */
 
   const applyFont = useCallback(
@@ -306,6 +322,7 @@ export function EditorView({
           onDelete={deleteAsset}
           onImport={importAssets}
           onSplitSheet={pickSheet}
+          onClear={() => setConfirmClear(true)}
         />
 
         <EditorCanvas
@@ -342,6 +359,34 @@ export function EditorView({
           />
         </div>
       </div>
+
+      {confirmClear && (
+        <Modal>
+          <h2 className="text-sm font-semibold text-zinc-200">
+            Vider la bibliothèque ?
+          </h2>
+          <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+            Les {assets.length} pièces seront supprimées du disque. Les
+            compositions qui les utilisent perdront leurs images.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmClear(false)}
+              className="cursor-pointer rounded-lg px-3 py-1.5 text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={clearLibrary}
+              className="cursor-pointer rounded-lg bg-red-500/90 px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Tout retirer
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {sheetPath && (
         <SheetModal

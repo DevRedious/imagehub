@@ -1,6 +1,28 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { Asset } from "../../lib/library";
 
+/** Corbeille : le geste se lit avant même le survol, là où une croix ne dit
+ *  que « fermer ». */
+function TrashIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 interface Props {
   assets: Asset[];
   loading: boolean;
@@ -8,6 +30,7 @@ interface Props {
   onDelete: (asset: Asset) => void;
   onImport: () => void;
   onSplitSheet: () => void;
+  onClear: () => void;
 }
 
 /** Bibliothèque d'éléments : le stock de pièces détachées dans lequel on
@@ -19,6 +42,7 @@ export function AssetPanel({
   onDelete,
   onImport,
   onSplitSheet,
+  onClear,
 }: Props) {
   return (
     <div className="flex min-h-0 w-56 shrink-0 flex-col gap-2">
@@ -27,9 +51,20 @@ export function AssetPanel({
           BIBLIOTHÈQUE
         </h3>
         {assets.length > 0 && (
-          <span className="text-[11px] tabular-nums text-zinc-600">
-            {assets.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClear}
+              title="Retirer toutes les pièces de la bibliothèque"
+              className="flex cursor-pointer items-center gap-1 rounded-md border border-zinc-700 bg-card px-1.5 py-0.5 text-[11px] text-zinc-400 transition-colors hover:border-red-500/70 hover:bg-red-500/15 hover:text-red-400"
+            >
+              <TrashIcon size={11} />
+              Tout
+            </button>
+            <span className="text-[11px] tabular-nums text-zinc-600">
+              {assets.length}
+            </span>
+          </div>
         )}
       </div>
 
@@ -88,13 +123,18 @@ export function AssetPanel({
                     draggable={false}
                   />
                 </button>
+                {/* Un vrai bouton, pas un glyphe posé sur l'image : surface
+                    opaque, bordure, icône, état au survol. Et visible en
+                    permanence — caché, il passait pour inexistant, alors que
+                    c'est le seul moyen de retirer une pièce. */}
                 <button
                   type="button"
                   onClick={() => onDelete(a)}
-                  title="Retirer de la bibliothèque"
-                  className="absolute top-0.5 right-0.5 hidden h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-black/70 text-[11px] text-zinc-300 transition-colors group-hover:flex hover:text-red-400"
+                  title={`Retirer « ${a.name} » de la bibliothèque`}
+                  aria-label={`Retirer ${a.name} de la bibliothèque`}
+                  className="absolute top-1.5 right-1.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900/90 text-zinc-400 shadow-sm shadow-black/40 transition-colors hover:border-red-500/70 hover:bg-red-500/20 hover:text-red-400 focus-visible:border-red-500/70 focus-visible:text-red-400 focus-visible:outline-none"
                 >
-                  ✕
+                  <TrashIcon />
                 </button>
               </div>
             ))}

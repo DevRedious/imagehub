@@ -120,6 +120,44 @@ pub fn library_delete(paths: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Le garde-fou de `library_delete` compare le chemin reçu à la racine de
+    /// la bibliothèque. Ce test le prend au mot : il écrit un fichier là où
+    /// `library_list` irait le chercher, le supprime par la commande, et
+    /// vérifie qu'il a bien disparu. Une divergence entre le chemin listé et
+    /// le chemin accepté rendrait la bibliothèque impossible à vider.
+    #[test]
+    fn une_piece_listee_est_supprimable() {
+        let root = library_root();
+        std::fs::create_dir_all(&root).expect("racine de bibliothèque");
+        let name = format!("imagehub-test-suppression-{}.png", std::process::id());
+        let file = root.join(&name);
+        image::RgbaImage::new(4, 4).save(&file).expect("écriture");
+
+        // le chemin tel que l'interface le reçoit
+        let listed = describe(&file).path;
+        assert!(file.exists(), "le fichier de test doit exister");
+
+        library_delete(vec![listed]).expect("la suppression doit aboutir");
+        assert!(!file.exists(), "le fichier doit avoir disparu");
+    }
+
+    #[test]
+    fn un_chemin_hors_bibliotheque_est_refuse() {
+        let intrus = std::env::temp_dir().join("imagehub-test-intrus.png");
+        image::RgbaImage::new(2, 2).save(&intrus).expect("écriture");
+        assert!(
+            library_delete(vec![intrus.to_string_lossy().to_string()]).is_err(),
+            "un chemin hors bibliothèque doit être refusé"
+        );
+        assert!(intrus.exists(), "et le fichier doit rester intact");
+        let _ = std::fs::remove_file(intrus);
+    }
+}
+
 /// Renomme une pièce sans la sortir de la bibliothèque ni changer son format.
 #[tauri::command]
 pub fn library_rename(path: String, name: String) -> Result<Asset, String> {
