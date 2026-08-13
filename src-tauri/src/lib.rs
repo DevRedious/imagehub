@@ -5,6 +5,7 @@ mod icon_packs;
 mod icon_prompts;
 mod inputs;
 mod library;
+mod pattern;
 mod project;
 mod qr;
 mod queue;
@@ -45,6 +46,11 @@ pub fn run() {
             sheet::sheet_commit,
             compose::composition_dir,
             compose::save_composition,
+            pattern::pattern_dir,
+            pattern::pattern_export,
+            pattern::pattern_save_json,
+            pattern::pattern_list_json,
+            pattern::pattern_read_json,
             emoji::emoji_dir,
             emoji::list_svgs,
             emoji::save_emoji_svg,

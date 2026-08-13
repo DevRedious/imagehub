@@ -57,6 +57,19 @@ export function EditorIcon({ size }: IconProps) {
   );
 }
 
+/** Motifs : une tuile qui se répète — quatre carreaux, dont un décalé pour
+ *  dire que le motif continue au-delà du cadre. */
+export function PatternIcon({ size }: IconProps) {
+  return (
+    <Glyph size={size}>
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" />
+      <path d="M13.5 3.5h7.5" />
+      <path d="M3.5 13.5v7.5" />
+    </Glyph>
+  );
+}
+
 /** Emojis : un visage souriant. */
 export function EmojiIcon({ size }: IconProps) {
   return (

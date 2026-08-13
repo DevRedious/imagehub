@@ -16,6 +16,7 @@ import {
   GearIcon,
   HistoryIcon,
   InfoIcon,
+  PatternIcon,
   ProjectIcon,
   QrIcon,
   StudioIcon,
@@ -24,6 +25,7 @@ import { Lightbox } from "./components/Lightbox";
 import { OutputSelect } from "./components/OutputSelect";
 import { ProjectSkeleton } from "./components/ProjectSkeleton";
 import { type ProjectTab, ProjectView } from "./components/ProjectView";
+import { MotifView } from "./components/pattern/MotifView";
 import { QrView } from "./components/QrView";
 import { ScanModal } from "./components/ScanModal";
 import { SettingsView } from "./components/SettingsView";
@@ -105,6 +107,7 @@ const DUAL_THEME_KEY = "imagehub.dualTheme";
 const TITLES: Record<View, { icon: React.ReactNode; label: string }> = {
   studio: { icon: <StudioIcon size={17} />, label: "Studio" },
   editor: { icon: <EditorIcon size={17} />, label: "Atelier" },
+  motifs: { icon: <PatternIcon size={17} />, label: "Générateur de motifs" },
   emojis: { icon: <EmojiIcon size={17} />, label: "Créateur d'emojis" },
   qr: { icon: <QrIcon size={17} />, label: "Générateur de QR codes" },
   history: { icon: <HistoryIcon size={17} />, label: "Historique" },
@@ -980,6 +983,13 @@ export default function App() {
               projectRoot={project?.root ?? null}
               projectAssetDir={project?.asset_dir ?? null}
               destination={editorDest()}
+              onReveal={revealOutput}
+              onToast={pushToast}
+            />
+          ) : view === "motifs" ? (
+            <MotifView
+              projectAssetDir={project?.asset_dir ?? null}
+              tools={tools}
               onReveal={revealOutput}
               onToast={pushToast}
             />

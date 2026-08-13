@@ -39,6 +39,7 @@ tokio = { version = "1", features = ["sync"] }
 base64 = "0.22"
 qrcode = { version = "0.14.1", default-features = false }
 rqrr = "0.10.1"
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "simd"] }
 
 # En dev, optimiser les dépendances (décodage d'images 10-50× plus rapide)
 # sans ralentir la recompilation de notre propre code.

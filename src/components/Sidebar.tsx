@@ -8,6 +8,7 @@ import {
   GearIcon,
   HistoryIcon,
   InfoIcon,
+  PatternIcon,
   QrIcon,
   StudioIcon,
 } from "./icons";
@@ -15,6 +16,7 @@ import {
 export type View =
   | "studio"
   | "editor"
+  | "motifs"
   | "emojis"
   | "qr"
   | "project"
@@ -185,6 +187,18 @@ export function Sidebar({
       >
         <EditorIcon size={collapsed ? 18 : 16} />
         {!collapsed && "Atelier"}
+      </button>
+
+      <button
+        type="button"
+        className={
+          collapsed ? railBtn(view === "motifs") : navBtn(view === "motifs")
+        }
+        onClick={() => onView("motifs")}
+        title={collapsed ? "Motifs" : undefined}
+      >
+        <PatternIcon size={collapsed ? 18 : 16} />
+        {!collapsed && "Motifs"}
       </button>
 
       <button
